@@ -30,10 +30,10 @@ build:
 
 requirements:
   run:
-    # Host binaries are built on Ubuntu 24.04 (glibc 2.39), matching the
-    # baseline of the Docker image this package replaces. Lower this only if
-    # the CI build moves to an older image.
-    - __glibc >=2.39
+    # Host binaries are built in an AlmaLinux 9 container (glibc 2.34), so the
+    # package runs on RHEL/Alma/Rocky 9, Ubuntu 22.04+ and Debian 12+. Keep in
+    # sync with the CI container image.
+    - __glibc >=2.34
 
 tests:
   - script:
