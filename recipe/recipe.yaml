@@ -52,6 +52,8 @@ requirements:
     - automake
     - libtool
     - file
+    # modern config.sub/config.guess for the 2017-era source trees (arm64-apple)
+    - gnuconfig
     # Deliberately NOT ncurses/expat/xz/zlib: gdb links its termcap stub when
     # none is found, and any conda .so dependency would become a NEEDED entry
     # that cannot be resolved at runtime (binary prefix relocation is off, so

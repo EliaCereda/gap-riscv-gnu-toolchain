@@ -19,6 +19,21 @@ gap-riscv-gnu-toolchain = "24.02.*"
 Then `pixi install` and `riscv32-unknown-elf-gcc` is on the environment path.
 For ad-hoc use: `pixi global install -c https://prefix.dev/eliacereda gap-riscv-gnu-toolchain`.
 
+Note: the channel's sharded repodata currently 404s on prefix.dev's side,
+which makes `pixi add`/`pixi install` fail with an error like
+`HTTP status client error (404 Not Found) for url (https://shards.prefix.dev/…)`.
+Until that is fixed, disable sharded repodata for prefix.dev in
+`.pixi/config.toml` (per workspace) or `~/.pixi/config.toml` (global):
+
+```toml
+[repodata-config."https://prefix.dev"]
+disable-sharded = true
+```
+
+Pixi then falls back to the plain `repodata.json`, which is regenerated about
+hourly — a freshly uploaded package can take up to an hour to become
+installable even though it is already visible on the website.
+
 Note: conda normalizes numeric version segments, so `24.02.0` may be displayed as
 `24.2.0` in lockfiles; `24.02.*` and `24.2.*` match the same package.
 

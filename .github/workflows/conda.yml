@@ -34,30 +34,34 @@ jobs:
           rattler-build build --recipe recipe/recipe.yaml --output-dir output 2>&1 | tee build.log
       - name: Check host binaries only link system libraries
         # Binary prefix relocation is disabled, so any reference into the build
-        # prefix would be a dead path at install time.
+        # prefix would be a dead path at install time. Output goes to audit.log
+        # so a failure can be included in the commit comment below.
         run: |
-          set -euo pipefail
-          pkg=$(find output -name '*.conda' | head -1)
-          mkdir -p audit && cd audit
-          unzip -oq "../$pkg"
-          tar --use-compress-program=unzstd -xf pkg-*.tar.zst
-          bins=$(find bin libexec -type f -perm -u+x 2>/dev/null || true)
-          if [ -z "$bins" ]; then echo "no binaries found to audit" >&2; exit 1; fi
-          status=0
-          for f in $bins; do
-            case "$(uname -s)" in
-              Linux) deps=$(readelf -d "$f" 2>/dev/null | awk '/NEEDED/ {print $NF}' | tr -d '[]') ;;
-              Darwin) deps=$(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}') ;;
-            esac
-            for d in $deps; do
-              case "$d" in
-                libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|/usr/lib/libSystem.B.dylib|/usr/lib/libc++.1.dylib|/usr/lib/libc++abi.dylib|/usr/lib/libresolv*) ;;
-                *) echo "UNEXPECTED dependency in $f: $d"; status=1 ;;
+          set -o pipefail
+          {
+            set -eux
+            pkg=$(find output -name '*.conda' | head -1)
+            mkdir -p audit && cd audit
+            unzip -oq "../$pkg"
+            tar --use-compress-program=unzstd -xf pkg-*.tar.zst
+            bins=$(find bin libexec -type f -perm -u+x 2>/dev/null || true)
+            if [ -z "$bins" ]; then echo "no binaries found to audit" >&2; exit 1; fi
+            status=0
+            for f in $bins; do
+              case "$(uname -s)" in
+                Linux) deps=$(readelf -d "$f" 2>/dev/null | awk '/NEEDED/ {print $NF}' | tr -d '[]') ;;
+                Darwin) deps=$(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}') ;;
               esac
+              for d in $deps; do
+                case "$d" in
+                  libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|/usr/lib/libSystem.B.dylib|/usr/lib/libc++.1.dylib|/usr/lib/libc++abi.dylib|/usr/lib/libresolv*) ;;
+                  *) echo "UNEXPECTED dependency in $f: $d"; status=1 ;;
+                esac
+              done
             done
-          done
-          [ "$status" -eq 0 ] && echo "audit passed: only system libraries referenced"
-          exit "$status"
+            [ "$status" -eq 0 ] && echo "audit passed: only system libraries referenced"
+            exit "$status"
+          } 2>&1 | tee audit.log
       - name: Post build log as commit comment
         if: failure()
         env:
@@ -66,8 +70,14 @@ jobs:
           {
             echo "CI failure on \`${{ matrix.platform }}\` (run ${GITHUB_RUN_ID}), last part of build.log:"
             echo '```'
-            tail -c 60000 build.log
+            tail -c 40000 build.log 2>/dev/null || echo "(no build.log)"
             echo '```'
+            if [ -f audit.log ]; then
+              echo "audit.log:"
+              echo '```'
+              tail -c 8000 audit.log
+              echo '```'
+            fi
           } | python3 -c 'import json,sys; print(json.dumps({"body": sys.stdin.read()}))' > comment.json
           curl -sS -X POST \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \

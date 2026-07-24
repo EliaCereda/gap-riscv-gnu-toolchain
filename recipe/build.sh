@@ -20,6 +20,13 @@ export ac_cv_search_tgetent=no ac_cv_search_waddstr=no \
 # libraries are absent from the build environment.
 ( cd riscv-gcc && ./contrib/download_prerequisites )
 
+# The 2017-era config.sub/config.guess in the subprojects (and in the gmp/
+# mpfr/mpc trees extracted above) predate Apple Silicon and reject the
+# arm64-apple-darwin host triple. Refresh them everywhere from gnuconfig,
+# after download_prerequisites so the extracted trees are covered too.
+find . -name config.sub -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.sub {} \;
+find . -name config.guess -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.guess {} \;
+
 # Link the C++ runtime statically on Linux. macOS has no static libc and its
 # libc++ is a stable system library, so there the dynamic default is correct
 # (and clang has no equivalent flags). Append to the conda activation's
