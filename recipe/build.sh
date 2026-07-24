@@ -15,10 +15,18 @@ export ac_cv_search_tgetent=no ac_cv_search_waddstr=no \
        ac_cv_header_ncurses_ncurses_h=no ac_cv_header_ncurses_curses_h=no
 
 # Build gmp/mpfr/mpc in-tree and statically instead of linking shared
-# libraries, so the host tools only depend on glibc. Append to the conda
-# activation's LDFLAGS rather than replacing them.
+# libraries, so the host tools only depend on the system C/C++ runtime. The
+# top-level configure picks the in-tree path automatically because those
+# libraries are absent from the build environment.
 ( cd riscv-gcc && ./contrib/download_prerequisites )
-export LDFLAGS="${LDFLAGS:-} -static-libstdc++ -static-libgcc"
+
+# Link the C++ runtime statically on Linux. macOS has no static libc and its
+# libc++ is a stable system library, so there the dynamic default is correct
+# (and clang has no equivalent flags). Append to the conda activation's
+# LDFLAGS rather than replacing them.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  export LDFLAGS="${LDFLAGS:-} -static-libstdc++ -static-libgcc"
+fi
 
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.

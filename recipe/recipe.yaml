@@ -18,7 +18,7 @@ source:
     - ../patches/toolchain/0001-disable-gdb-python.patch
 
 build:
-  number: 1
+  number: 2
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening

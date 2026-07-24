@@ -3,14 +3,14 @@
 Builds the [GAP RISC-V GNU toolchain](https://github.com/GreenWaves-Technologies/gap-riscv-gnu-toolchain)
 (riscv32-unknown-elf GCC, binutils, GDB and newlib for GreenWaves GAP processors)
 as a relocatable conda package with [rattler-build](https://rattler.build), for
-`linux-64` and `linux-aarch64`.
+`linux-64`, `linux-aarch64`, `osx-arm64` and `osx-64`.
 
 ## Using the toolchain with Pixi
 
 ```toml
 [workspace]
 channels = ["https://prefix.dev/eliacereda", "conda-forge"]
-platforms = ["linux-64", "linux-aarch64"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
 
 [dependencies]
 gap-riscv-gnu-toolchain = "24.02.*"
@@ -31,18 +31,21 @@ pixi run build
 This runs `rattler-build build --recipe recipe/recipe.yaml`. The build compiles
 GCC + binutils + newlib from source (upstream commit pinned in
 [recipe/recipe.yaml](recipe/recipe.yaml)) and takes on the order of 10 minutes
-to 2 hours depending on core count. The build is fully conda-native: compilers
-(`${{ compiler('c') }}`, conda-forge gcc 13 with the glibc 2.28 sysroot — see
-[recipe/variants.yaml](recipe/variants.yaml)) and all build tools come from
-conda-forge, so it works on any Linux host with no container and no distro
-packages, and the package's `__glibc >=2.28` floor comes from the pinned
-sysroot rather than the build machine. gmp/mpfr/mpc and zlib are built
-in-tree, statically; the host binaries depend on glibc only.
+to 2 hours depending on core count. The build is fully conda-native: the
+compilers and all build tools come from conda-forge, so it works on any
+supported host with no container and no system packages. The compatibility
+floor comes from the pinned standard library rather than the build machine —
+on Linux gcc 13 with the glibc 2.28 sysroot (giving `__glibc >=2.28`), on
+macOS clang with deployment target 11.0; see
+[recipe/variants.yaml](recipe/variants.yaml). gmp/mpfr/mpc and zlib are built
+in-tree, statically, so the host binaries link only system libraries (CI
+verifies this with `readelf`/`otool`).
 
 ## CI and publishing
 
 GitHub Actions ([.github/workflows/conda.yml](.github/workflows/conda.yml)) builds
-both architectures natively on hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`)
+all four platforms natively on hosted runners (`ubuntu-24.04`,
+`ubuntu-24.04-arm`, `macos-15`, `macos-15-intel`)
 on every push/PR. Pushing a `v*` tag additionally uploads the packages to the
 `eliacereda` channel on prefix.dev, authenticating via OIDC trusted publishing
 (the repository is registered as a Trusted Publisher on prefix.dev; no stored
