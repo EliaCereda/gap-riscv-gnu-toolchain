@@ -9,7 +9,7 @@ as a relocatable conda package with [rattler-build](https://rattler.build), for
 
 ```toml
 [workspace]
-channels = ["https://prefix.dev/gap-sdk", "conda-forge"]
+channels = ["https://prefix.dev/eliacereda", "conda-forge"]
 platforms = ["linux-64", "linux-aarch64"]
 
 [dependencies]
@@ -17,7 +17,7 @@ gap-riscv-gnu-toolchain = "24.02.*"
 ```
 
 Then `pixi install` and `riscv32-unknown-elf-gcc` is on the environment path.
-For ad-hoc use: `pixi global install -c https://prefix.dev/gap-sdk gap-riscv-gnu-toolchain`.
+For ad-hoc use: `pixi global install -c https://prefix.dev/eliacereda gap-riscv-gnu-toolchain`.
 
 Note: conda normalizes numeric version segments, so `24.02.0` may be displayed as
 `24.2.0` in lockfiles; `24.02.*` and `24.2.*` match the same package.
@@ -41,15 +41,19 @@ are downloaded and built in-tree, statically.
 GitHub Actions ([.github/workflows/conda.yml](.github/workflows/conda.yml)) builds
 both architectures natively on hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`)
 on every push/PR. Pushing a `v*` tag additionally uploads the packages to the
-`gap-sdk` channel on prefix.dev (requires the `PREFIX_API_KEY` repository secret).
+`eliacereda` channel on prefix.dev (requires the `PREFIX_API_KEY` repository secret).
 
 Release flow: bump `context.version` / `context.rev` in the recipe, tag `v<version>`
 (e.g. `v24.02.0`), push the tag.
 
 ## Patches
 
-Patches dropped into `patches/toolchain/` can be applied to the upstream checkout
-from `recipe/build.sh` (currently no patches are applied).
+Patches in `patches/toolchain/` are applied to the upstream checkout via the
+`source.patches` list in [recipe/recipe.yaml](recipe/recipe.yaml). Currently:
+
+- `0001-disable-gdb-python.patch` — GDB 8.0-era Python bindings do not compile
+  against modern Python, so Python scripting support is disabled explicitly
+  (otherwise the build fails on any host with python3 development headers).
 
 ## Notes on relocatability
 

@@ -1,0 +1,26 @@
+Disable GDB's Python scripting support
+
+GDB 8.0-era Python bindings do not compile against modern Python
+(>= 3.8 removed/changed private C APIs such as _PyImport_FixupBuiltin),
+so builds fail on hosts where python3 development headers are present
+(e.g. GitHub Actions runners). Pass --with-python=no to the binutils-gdb
+configure; autoconf forwards it to the gdb sub-configure.
+
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -94,6 +94,7 @@
+ 		--with-sysroot=$(SYSROOT) \
+ 		$(MULTILIB_FLAGS) \
+ 		@with_guile@ \
++		--with-python=no \
+ 		--disable-werror \
+ 		--disable-nls
+ 	$(MAKE) -C $(notdir $@)
+@@ -214,6 +215,7 @@
+ 		$(CONFIGURE_HOST) \
+ 		--prefix=$(INSTALL_DIR) \
+ 		@with_guile@ \
++		--with-python=no \
+ 		--disable-werror
+ 	$(MAKE) -C $(notdir $@)
+ 	$(MAKE) -C $(notdir $@) install

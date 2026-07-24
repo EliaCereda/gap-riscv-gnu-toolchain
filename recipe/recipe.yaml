@@ -14,6 +14,8 @@ package:
 source:
   git: https://github.com/GreenWaves-Technologies/gap-riscv-gnu-toolchain.git
   rev: ${{ rev }}
+  patches:
+    - ../patches/toolchain/0001-disable-gdb-python.patch
 
 build:
   number: 0
