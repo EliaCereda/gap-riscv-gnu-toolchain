@@ -41,7 +41,9 @@ are downloaded and built in-tree, statically.
 GitHub Actions ([.github/workflows/conda.yml](.github/workflows/conda.yml)) builds
 both architectures natively on hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`)
 on every push/PR. Pushing a `v*` tag additionally uploads the packages to the
-`eliacereda` channel on prefix.dev (requires the `PREFIX_API_KEY` repository secret).
+`eliacereda` channel on prefix.dev, authenticating via OIDC trusted publishing
+(the repository is registered as a Trusted Publisher on prefix.dev; no stored
+API key).
 
 Release flow: bump `context.version` / `context.rev` in the recipe, tag `v<version>`
 (e.g. `v24.02.0`), push the tag.
