@@ -18,7 +18,7 @@ source:
     - ../patches/toolchain/0001-disable-gdb-python.patch
 
 build:
-  number: 0
+  number: 1
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
@@ -29,11 +29,40 @@ build:
     ignore_binary_files: true
 
 requirements:
-  run:
-    # Host binaries are built in an AlmaLinux 9 container (glibc 2.34), so the
-    # package runs on RHEL/Alma/Rocky 9, Ubuntu 22.04+ and Debian 12+. Keep in
-    # sync with the CI container image.
-    - __glibc >=2.34
+  build:
+    # conda-forge compilers + sysroot: the glibc floor comes from the pinned
+    # sysroot (see variants.yaml) via its strong run export (__glibc >=2.28),
+    # independent of the build host.
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - ${{ stdlib('c') }}
+    - make
+    - gawk
+    - sed
+    - bison
+    - flex
+    - texinfo
+    - gperf
+    - diffutils
+    - bc
+    # download_prerequisites prefers wget; bzip2 extracts its .tar.bz2 files
+    - wget
+    - bzip2
+    - autoconf
+    - automake
+    - libtool
+    - file
+    # Deliberately NOT ncurses/expat/xz/zlib: gdb links its termcap stub when
+    # none is found, and any conda .so dependency would become a NEEDED entry
+    # that cannot be resolved at runtime (binary prefix relocation is off, so
+    # baked rpaths are dead). Host binaries must depend on glibc only.
+  # The host binaries link libstdc++/libgcc statically (see build.sh), so the
+  # compilers' run exports are not real runtime requirements — only the
+  # sysroot's __glibc export is.
+  ignore_run_exports:
+    by_name:
+      - libstdcxx
+      - libgcc
 
 tests:
   - script:

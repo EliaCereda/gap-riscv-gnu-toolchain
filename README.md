@@ -14,15 +14,7 @@ platforms = ["linux-64", "linux-aarch64"]
 
 [dependencies]
 gap-riscv-gnu-toolchain = "24.02.*"
-
-[system-requirements]
-libc = { family = "glibc", version = "2.34" }
 ```
-
-The `[system-requirements]` section is required: the package's binaries need
-glibc >= 2.34 (the AlmaLinux 9 build baseline), while Pixi solves against a
-default glibc of 2.28 — without the override the solve fails with
-"__glibc >=2.34, for which no candidates were found".
 
 Then `pixi install` and `riscv32-unknown-elf-gcc` is on the environment path.
 For ad-hoc use: `pixi global install -c https://prefix.dev/eliacereda gap-riscv-gnu-toolchain`.
@@ -39,19 +31,19 @@ pixi run build
 This runs `rattler-build build --recipe recipe/recipe.yaml`. The build compiles
 GCC + binutils + newlib from source (upstream commit pinned in
 [recipe/recipe.yaml](recipe/recipe.yaml)) and takes on the order of 10 minutes
-to 2 hours depending on core count. Host build dependencies (autotools, bison,
-flex, texinfo, gperf, gawk, bc, zlib headers, a C/C++ compiler) must be
-installed system-side; gmp/mpfr/mpc are downloaded and built in-tree,
-statically. Release builds run in an AlmaLinux 9 container (glibc 2.34), which
-sets the package's `__glibc >=2.34` floor — build in the same container (see
-the CI workflow for the exact `dnf` package list) if the result should be
-distributed.
+to 2 hours depending on core count. The build is fully conda-native: compilers
+(`${{ compiler('c') }}`, conda-forge gcc 13 with the glibc 2.28 sysroot — see
+[recipe/variants.yaml](recipe/variants.yaml)) and all build tools come from
+conda-forge, so it works on any Linux host with no container and no distro
+packages, and the package's `__glibc >=2.28` floor comes from the pinned
+sysroot rather than the build machine. gmp/mpfr/mpc and zlib are built
+in-tree, statically; the host binaries depend on glibc only.
 
 ## CI and publishing
 
 GitHub Actions ([.github/workflows/conda.yml](.github/workflows/conda.yml)) builds
-both architectures natively on hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`),
-inside `almalinux:9` containers for the glibc 2.34 baseline, on every push/PR. Pushing a `v*` tag additionally uploads the packages to the
+both architectures natively on hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`)
+on every push/PR. Pushing a `v*` tag additionally uploads the packages to the
 `eliacereda` channel on prefix.dev, authenticating via OIDC trusted publishing
 (the repository is registered as a Trusted Publisher on prefix.dev; no stored
 API key).

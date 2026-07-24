@@ -15,26 +15,16 @@ jobs:
           - { os: ubuntu-24.04, platform: linux-64, arch: x86_64 }
           - { os: ubuntu-24.04-arm, platform: linux-aarch64, arch: aarch64 }
     runs-on: ${{ matrix.os }}
-    # Build on AlmaLinux 9 (glibc 2.34) so the packages run on RHEL/Alma/Rocky 9,
-    # Ubuntu 22.04+ and Debian 12+. Keep in sync with the recipe's __glibc floor.
-    container: almalinux:9
     timeout-minutes: 360
     permissions:
       contents: write # to post the build log as a commit comment on failure
     steps:
       - uses: actions/checkout@v4
-      - name: Install build dependencies
-        run: |
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --set-enabled crb
-          dnf install -y gcc gcc-c++ make autoconf automake libtool texinfo \
-            bison flex gperf gawk bc zlib-devel git patch wget xz tar python3 \
-            bzip2 diffutils file libstdc++-static
       - name: Install rattler-build
         run: |
-          curl -fsSL "https://github.com/prefix-dev/rattler-build/releases/latest/download/rattler-build-${{ matrix.arch }}-unknown-linux-musl" \
+          sudo curl -fsSL "https://github.com/prefix-dev/rattler-build/releases/latest/download/rattler-build-${{ matrix.arch }}-unknown-linux-musl" \
             -o /usr/local/bin/rattler-build
-          chmod +x /usr/local/bin/rattler-build
+          sudo chmod +x /usr/local/bin/rattler-build
           rattler-build --version
       - name: Build package
         run: |
