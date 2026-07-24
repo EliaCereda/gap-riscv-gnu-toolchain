@@ -1,0 +1,44 @@
+name: conda
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-24.04, platform: linux-64 }
+          - { os: ubuntu-24.04-arm, platform: linux-aarch64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake autotools-dev curl gawk \
+            bison flex texinfo gperf libtool patchutils bc build-essential zlib1g-dev
+      - uses: prefix-dev/rattler-build-action@v0.2.39
+        with:
+          recipe-path: recipe/recipe.yaml
+          build-args: --skip-existing=all
+          artifact-name: package-${{ matrix.platform }}
+
+  upload:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          run-install: false
+      - name: Upload packages to prefix.dev
+        run: |
+          pixi exec rattler-build upload prefix -c gap-sdk $(find . -name '*.conda')
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}

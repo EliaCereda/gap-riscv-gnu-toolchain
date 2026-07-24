@@ -1,0 +1,57 @@
+schema_version: 1
+
+context:
+  # Upstream "release-v24.02"; the tag only exists in the private idsia-robotics
+  # fork but points at this public master commit. Conda parses 24.02 == 24.2;
+  # the trailing .0 leaves room for respins (24.02.1) and patched variants.
+  version: "24.02.0"
+  rev: fbb9fa450d01c1c170f94af817490f41c5ef7971
+
+package:
+  name: gap-riscv-gnu-toolchain
+  version: ${{ version }}
+
+source:
+  git: https://github.com/GreenWaves-Technologies/gap-riscv-gnu-toolchain.git
+  rev: ${{ rev }}
+
+build:
+  number: 0
+  prefix_detection:
+    # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
+    # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
+    # the embedded string at install time corrupts its specs-file lookup
+    # ("<prefix>/lib/gcc/: Is a directory"). Left untouched, the baked-in
+    # build path simply doesn't exist at runtime and GCC falls back to its
+    # fully supported argv[0]-relative self-relocation.
+    ignore_binary_files: true
+
+requirements:
+  run:
+    # Host binaries are built on Ubuntu 24.04 (glibc 2.39), matching the
+    # baseline of the Docker image this package replaces. Lower this only if
+    # the CI build moves to an older image.
+    - __glibc >=2.39
+
+tests:
+  - script:
+      - riscv32-unknown-elf-gcc --version
+      - riscv32-unknown-elf-gcc -print-multi-lib
+      # Full compile+link of the rv32imcxgap9 multilib. __global_pointer$ is
+      # normally provided by the GAP SDK's chip-specific linker scripts; a
+      # standalone link needs it supplied by hand.
+      - riscv32-unknown-elf-gcc -march=rv32imcxgap9 -mcmodel=medlow tests/hello.c -o hello '-Wl,--defsym,__global_pointer$=0x1000'
+      - riscv32-unknown-elf-objdump -d hello | head -n 40
+    files:
+      recipe:
+        - tests/hello.c
+
+about:
+  summary: GAP RISC-V GNU toolchain (riscv32-unknown-elf GCC, binutils, newlib) for GreenWaves GAP processors
+  license: GPL-3.0-or-later WITH GCC-exception-3.1
+  license_file:
+    - riscv-gcc/COPYING3
+    - riscv-binutils-gdb/COPYING
+    - riscv-newlib/COPYING.NEWLIB
+  homepage: https://greenwaves-technologies.com/
+  repository: https://github.com/GreenWaves-Technologies/gap-riscv-gnu-toolchain
