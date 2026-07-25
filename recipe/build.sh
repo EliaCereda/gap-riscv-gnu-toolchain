@@ -27,6 +27,12 @@ export ac_cv_search_tgetent=no ac_cv_search_waddstr=no \
 find . -name config.sub -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.sub {} \;
 find . -name config.guess -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.guess {} \;
 
+# Fresh git checkouts have arbitrary mtimes, which can make the pregenerated
+# bison/flex outputs (e.g. intl/plural.c) look stale; modern bison then
+# mangles the 2003-era grammars and the build fails. Backdate all grammar
+# sources so the shipped generated files always win.
+find . \( -name '*.y' -o -name '*.yy' -o -name '*.l' -o -name '*.ll' \) -exec touch -t 200001010000 {} +
+
 # Link the C++ runtime statically on Linux. macOS has no static libc and its
 # libc++ is a stable system library, so there the dynamic default is correct
 # (and clang has no equivalent flags). Append to the conda activation's
