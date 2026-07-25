@@ -91,6 +91,12 @@ fi
 # above. The prerequisites are already in place, so neutralize the re-run.
 sed -i 's|&& \./contrib/download_prerequisites|\&\& true|' Makefile.in
 
+# libcc1 is gdb's compile-anything plugin — useless for an embedded cross
+# toolchain, and its host plugin libraries fail to link on aarch64-darwin
+# (they resolve symbols against the running cc1, which gcc 7's libtool
+# setup never handled for that host). Disable it uniformly.
+sed -i 's|--disable-libmudflap|--disable-libcc1 --disable-libmudflap|' Makefile.in
+
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.
 # --without-system-zlib makes GCC build its bundled zlib statically (the
