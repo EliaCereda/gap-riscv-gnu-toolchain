@@ -62,6 +62,11 @@ fi
 # was current.
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export CFLAGS="${CFLAGS:-} -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=incompatible-function-pointer-types -Wno-error=incompatible-pointer-types"
+  # gdb's enum-flags template casts -1 into unscoped enums; clang 18 makes
+  # that an error by default (-Wenum-constexpr-conversion) but still allows
+  # downgrading it — clang >= 19 does not, hence the version pin in
+  # variants.yaml.
+  export CXXFLAGS="${CXXFLAGS:-} -Wno-error=enum-constexpr-conversion"
 fi
 
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
