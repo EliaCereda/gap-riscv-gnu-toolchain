@@ -70,6 +70,9 @@ requirements:
     by_name:
       - libstdcxx
       - libgcc
+      # macOS: binaries link the system libc++ (/usr/lib/libc++.1.dylib),
+      # not conda's libcxx, so clangxx's run export does not apply either
+      - libcxx
 
 tests:
   - script:

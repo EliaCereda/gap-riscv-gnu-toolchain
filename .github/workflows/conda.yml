@@ -54,7 +54,7 @@ jobs:
               esac
               for d in $deps; do
                 case "$d" in
-                  libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|/usr/lib/libSystem.B.dylib|/usr/lib/libc++.1.dylib|/usr/lib/libc++abi.dylib|/usr/lib/libresolv*) ;;
+                  libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|/usr/lib/libSystem.B.dylib|/usr/lib/libc++.1.dylib|/usr/lib/libc++abi.dylib|/usr/lib/libresolv*|/usr/lib/libiconv.2.dylib) ;;
                   *) echo "UNEXPECTED dependency in $f: $d"; status=1 ;;
                 esac
               done
