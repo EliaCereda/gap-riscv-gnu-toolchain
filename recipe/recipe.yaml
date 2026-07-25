@@ -18,7 +18,7 @@ source:
     - ../patches/toolchain/0001-disable-gdb-python.patch
 
 build:
-  number: 1
+  number: 2
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
@@ -40,6 +40,9 @@ requirements:
     - gawk
     - sed
     - bison
+    # bison shells out to GNU m4 at runtime (gdb's grammars are generated at
+    # build time); without it in the env, macOS falls back to Xcode's BSD gm4
+    - m4
     - flex
     - texinfo
     - gperf
@@ -52,6 +55,10 @@ requirements:
     - automake
     - libtool
     - file
+    # modern config.sub/config.guess for the 2017-era source trees (arm64-apple)
+    - gnuconfig
+    # applies the gcc patches under recipe/patches/ from build.sh
+    - patch
     # Deliberately NOT ncurses/expat/xz/zlib: gdb links its termcap stub when
     # none is found, and any conda .so dependency would become a NEEDED entry
     # that cannot be resolved at runtime (binary prefix relocation is off, so
@@ -63,6 +70,9 @@ requirements:
     by_name:
       - libstdcxx
       - libgcc
+      # macOS: binaries link the system libc++ (/usr/lib/libc++.1.dylib),
+      # not conda's libcxx, so clangxx's run export does not apply either
+      - libcxx
 
 tests:
   - script:

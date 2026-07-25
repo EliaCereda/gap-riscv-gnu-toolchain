@@ -12,8 +12,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-24.04, platform: linux-64, arch: x86_64 }
-          - { os: ubuntu-24.04-arm, platform: linux-aarch64, arch: aarch64 }
+          - { os: ubuntu-24.04, platform: linux-64, target: x86_64-unknown-linux-musl }
+          - { os: ubuntu-24.04-arm, platform: linux-aarch64, target: aarch64-unknown-linux-musl }
+          - { os: macos-15, platform: osx-arm64, target: aarch64-apple-darwin }
+          - { os: macos-15-intel, platform: osx-64, target: x86_64-apple-darwin }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     permissions:
@@ -22,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install rattler-build
         run: |
-          sudo curl -fsSL "https://github.com/prefix-dev/rattler-build/releases/latest/download/rattler-build-${{ matrix.arch }}-unknown-linux-musl" \
+          sudo curl -fsSL "https://github.com/prefix-dev/rattler-build/releases/latest/download/rattler-build-${{ matrix.target }}" \
             -o /usr/local/bin/rattler-build
           sudo chmod +x /usr/local/bin/rattler-build
           rattler-build --version
@@ -30,22 +32,54 @@ jobs:
         run: |
           set -o pipefail
           rattler-build build --recipe recipe/recipe.yaml --output-dir output 2>&1 | tee build.log
+      - name: Check host binaries only link system libraries
+        # Binary prefix relocation is disabled, so any reference into the build
+        # prefix would be a dead path at install time. Output goes to audit.log
+        # so a failure can be included in the commit comment below.
+        run: |
+          set -o pipefail
+          {
+            set -eu
+            pkg=$(find output -name '*.conda' | head -1)
+            mkdir -p audit && cd audit
+            unzip -oq "../$pkg"
+            tar --use-compress-program=unzstd -xf pkg-*.tar.zst
+            bins=$(find bin libexec -type f -perm -u+x 2>/dev/null || true)
+            if [ -z "$bins" ]; then echo "no binaries found to audit" >&2; exit 1; fi
+            status=0
+            for f in $bins; do
+              case "$(uname -s)" in
+                Linux) deps=$(readelf -d "$f" 2>/dev/null | awk '/NEEDED/ {print $NF}' | tr -d '[]' || true) ;;
+                Darwin) deps=$(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' || true) ;;
+              esac
+              for d in $deps; do
+                case "$d" in
+                  libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|ld-linux*|/usr/lib/libSystem.B.dylib|/usr/lib/libc++.1.dylib|/usr/lib/libc++abi.dylib|/usr/lib/libresolv*|/usr/lib/libiconv.2.dylib|/usr/lib/libexpat.1.dylib) ;;
+                  *) echo "UNEXPECTED dependency in $f: $d"; status=1 ;;
+                esac
+              done
+            done
+            [ "$status" -eq 0 ] && echo "audit passed: only system libraries referenced"
+            exit "$status"
+          } 2>&1 | tee audit.log
       - name: Post build log as commit comment
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           {
             echo "CI failure on \`${{ matrix.platform }}\` (run ${GITHUB_RUN_ID}), last part of build.log:"
             echo '```'
-            tail -c 60000 build.log
+            tail -c 40000 build.log 2>/dev/null || echo "(no build.log)"
             echo '```'
-          } | python3 -c 'import json,sys; print(json.dumps({"body": sys.stdin.read()}))' > comment.json
-          curl -sS -X POST \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
-            --data-binary @comment.json
+            if [ -f audit.log ]; then
+              echo "audit.log:"
+              echo '```'
+              tail -c 8000 audit.log
+              echo '```'
+            fi
+          } > comment.txt
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" -F body=@comment.txt
       - uses: actions/upload-artifact@v4
         with:
           name: package-${{ matrix.platform }}
