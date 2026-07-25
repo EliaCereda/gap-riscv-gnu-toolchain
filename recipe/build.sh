@@ -69,6 +69,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   export CXXFLAGS="${CXXFLAGS:-} -Wno-error=enum-constexpr-conversion"
 fi
 
+# The generated Makefile re-runs download_prerequisites during the build
+# (when gmp/mpfr/mpc are not host libraries), and GCC 7's script re-extracts
+# the tarballs unconditionally — clobbering the config.sub/zutil.h fixups
+# above. The prerequisites are already in place, so neutralize the re-run.
+sed -i 's|&& \./contrib/download_prerequisites|\&\& true|' Makefile.in
+
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.
 # --without-system-zlib makes GCC build its bundled zlib statically (the
