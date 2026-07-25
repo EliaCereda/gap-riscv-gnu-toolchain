@@ -29,8 +29,10 @@ export ac_cv_search_tgetent=no ac_cv_search_waddstr=no \
 # mpfr/mpc trees extracted above) predate Apple Silicon and reject the
 # arm64-apple-darwin host triple. Refresh them everywhere from gnuconfig,
 # after download_prerequisites so the extracted trees are covered too.
-find . -name config.sub -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.sub {} \;
-find . -name config.guess -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.guess {} \;
+# (cp -f: the mpc tarball extracts these files read-only, and a plain cp
+# fails on them silently inside find -exec)
+find . -name config.sub -exec cp -f "$BUILD_PREFIX"/share/gnuconfig/config.sub {} \;
+find . -name config.guess -exec cp -f "$BUILD_PREFIX"/share/gnuconfig/config.guess {} \;
 
 # Fresh git checkouts have arbitrary mtimes, which can make the pregenerated
 # bison/flex outputs (e.g. intl/plural.c) look stale; modern bison then
