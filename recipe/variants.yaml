@@ -5,12 +5,20 @@
 # so consumers need no [system-requirements] override). On macOS the same
 # stdlib() mechanism selects the deployment target instead; clang takes
 # conda-forge's default version.
+# clang is pinned to 18 on macOS: the toolchain is proven to build with
+# clang 18 (manual osx-arm64 build), while clang >= 19 rejects gdb's
+# enum-flags template (stricter constant evaluation of out-of-range enum
+# casts).
 c_compiler_version:
   - if: linux
     then: "13"
+  - if: osx
+    then: "18"
 cxx_compiler_version:
   - if: linux
     then: "13"
+  - if: osx
+    then: "18"
 c_stdlib:
   - if: linux
     then: sysroot
