@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-# The conda compiler activation injects -std=c++17 into CXXFLAGS, which
-# overrides GCC 7's own -std=gnu++98 and breaks its (pre-C++17) sources.
-export CXXFLAGS="${CXXFLAGS/-std=c++17/}"
+# On Linux the conda compiler activation's -std=c++17 in CXXFLAGS overrides
+# GCC 7's own -std=gnu++98 and breaks its (pre-C++17) sources under gcc 13.
+# On macOS the flag stays: clang otherwise defaults to gnu++17, which gdb's
+# enum-flags template rejects, and the toolchain is proven to build with
+# clang -std=c++17 (manual osx-arm64 build in a conda env).
+if [[ "$(uname -s)" == "Linux" ]]; then
+  export CXXFLAGS="${CXXFLAGS/-std=c++17/}"
+fi
 
 # Keep gdb curses/termcap-free (stub termcap, no TUI). Conda build tools drag
 # ncurses into the build environment transitively, but any conda .so in the
