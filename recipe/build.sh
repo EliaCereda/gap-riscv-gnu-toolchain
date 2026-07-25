@@ -79,8 +79,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   # gdb's enum-flags template casts -1 into unscoped enums; clang 18 makes
   # that an error by default (-Wenum-constexpr-conversion) but still allows
   # downgrading it — clang >= 19 does not, hence the version pin in
-  # variants.yaml.
-  export CXXFLAGS="${CXXFLAGS:-} -Wno-error=enum-constexpr-conversion"
+  # variants.yaml. 'register' (gcc/cp via cfns.gperf) and dynamic exception
+  # specs are C++17 removals that gcc 13 reports as warnings but clang
+  # promotes to errors under its gnu++17 default.
+  export CXXFLAGS="${CXXFLAGS:-} -Wno-error=enum-constexpr-conversion -Wno-register -Wno-dynamic-exception-spec"
 fi
 
 # The generated Makefile re-runs download_prerequisites during the build
