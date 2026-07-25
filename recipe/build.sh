@@ -50,6 +50,15 @@ export M4="$BUILD_PREFIX/bin/m4"
 # breaks the fdopen declaration in modern macOS SDK headers. Drop it.
 find . -path '*/zlib/zutil.h' -exec sed -i '/define fdopen(fd,mode) NULL/d' {} +
 
+# The GAP fork's SMALLF mode iterator can expand to V1SF, which is missing
+# from riscv.md's declared "mode" attribute values. gcc hosts constant-fold
+# the (false) TARGET_HARD_FLOAT insn conditions and prune those variants
+# before genattrtab's check; clang does not fold them, and genattrtab then
+# rejects the file. Declare the missing value — the insns stay disabled by
+# their run-time conditions either way.
+sed -i 's/"unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V2HI,V4QI,V2HF,V2OHF"/"unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V1SF,V2HI,V4QI,V2HF,V2OHF"/' \
+  riscv-gcc/gcc/config/riscv/riscv.md
+
 # Link the C++ runtime statically on Linux. macOS has no static libc and its
 # libc++ is a stable system library, so there the dynamic default is correct
 # (and clang has no equivalent flags). Append to the conda activation's
