@@ -46,6 +46,14 @@ if [[ "$(uname -s)" == "Linux" ]]; then
   export LDFLAGS="${LDFLAGS:-} -static-libstdc++ -static-libgcc"
 fi
 
+# The 2017-era K&R C throughout binutils/readline/gdb trips diagnostics that
+# clang >= 16 promoted to hard errors (readline's undeclared ioctl() being
+# the first); downgrade them back to the warnings they were when this code
+# was current.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  export CFLAGS="${CFLAGS:-} -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -Wno-error=incompatible-function-pointer-types -Wno-error=incompatible-pointer-types"
+fi
+
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.
 # --without-system-zlib makes GCC build its bundled zlib statically (the
