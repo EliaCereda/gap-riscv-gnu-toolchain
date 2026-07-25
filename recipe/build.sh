@@ -33,6 +33,11 @@ find . -name config.guess -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.guess 
 # sources so the shipped generated files always win.
 find . \( -name '*.y' -o -name '*.yy' -o -name '*.l' -o -name '*.ll' \) -exec touch -t 200001010000 {} +
 
+# The zlib bundled with the binutils and gcc trees #defines fdopen to NULL
+# on macOS (a pre-OS-X workaround, removed in later upstream zlib), which
+# breaks the fdopen declaration in modern macOS SDK headers. Drop it.
+find . -path '*/zlib/zutil.h' -exec sed -i '/define fdopen(fd,mode) NULL/d' {} +
+
 # Link the C++ runtime statically on Linux. macOS has no static libc and its
 # libc++ is a stable system library, so there the dynamic default is correct
 # (and clang has no equivalent flags). Append to the conda activation's
