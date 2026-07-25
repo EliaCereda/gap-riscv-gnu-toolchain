@@ -33,6 +33,11 @@ find . -name config.guess -exec cp "$BUILD_PREFIX"/share/gnuconfig/config.guess 
 # sources so the shipped generated files always win.
 find . \( -name '*.y' -o -name '*.yy' -o -name '*.l' -o -name '*.ll' \) -exec touch -t 200001010000 {} +
 
+# bison generates gdb's parsers (c-exp.y etc.) during the build and needs
+# GNU m4 — point it at the build env's explicitly so a BSD m4 from the host
+# (Xcode's gm4) can never be picked up.
+export M4="$BUILD_PREFIX/bin/m4"
+
 # The zlib bundled with the binutils and gcc trees #defines fdopen to NULL
 # on macOS (a pre-OS-X workaround, removed in later upstream zlib), which
 # breaks the fdopen declaration in modern macOS SDK headers. Drop it.

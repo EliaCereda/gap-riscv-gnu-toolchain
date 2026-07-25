@@ -40,6 +40,9 @@ requirements:
     - gawk
     - sed
     - bison
+    # bison shells out to GNU m4 at runtime (gdb's grammars are generated at
+    # build time); without it in the env, macOS falls back to Xcode's BSD gm4
+    - m4
     - flex
     - texinfo
     - gperf
