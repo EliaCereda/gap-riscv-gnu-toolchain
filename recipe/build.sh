@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-# On Linux the conda compiler activation's -std=c++17 in CXXFLAGS overrides
-# GCC 7's own -std=gnu++98 and breaks its (pre-C++17) sources under gcc 13.
-# On macOS the flag stays: clang otherwise defaults to gnu++17, which gdb's
-# enum-flags template rejects, and the toolchain is proven to build with
-# clang -std=c++17 (manual osx-arm64 build in a conda env).
-if [[ "$(uname -s)" == "Linux" ]]; then
-  export CXXFLAGS="${CXXFLAGS/-std=c++17/}"
-fi
+# The conda compiler activation injects -std=c++17 into CXXFLAGS, which
+# overrides GCC 7's own -std=gnu++98 and breaks its pre-C++17 sources
+# ('register' storage class in gcc/cp, etc.). gdb picks its own standard and
+# is handled by the -Wno-error below.
+export CXXFLAGS="${CXXFLAGS/-std=c++17/}"
 
 # Keep gdb curses/termcap-free (stub termcap, no TUI). Conda build tools drag
 # ncurses into the build environment transitively, but any conda .so in the
@@ -49,6 +46,12 @@ export M4="$BUILD_PREFIX/bin/m4"
 # on macOS (a pre-OS-X workaround, removed in later upstream zlib), which
 # breaks the fdopen declaration in modern macOS SDK headers. Drop it.
 find . -path '*/zlib/zutil.h' -exec sed -i '/define fdopen(fd,mode) NULL/d' {} +
+
+# gcc 7 predates Apple Silicon: add the aarch64-darwin host support that
+# upstream gained in gcc 12 (config.host gates it, so this is inert
+# elsewhere), and graphite.h's missing isl includes.
+patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0002-gcc-add-aarch64-darwin-host-support.patch"
+patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0003-gcc-graphite-isl-includes.patch"
 
 # The GAP fork's SMALLF mode iterator can expand to V1SF, which is missing
 # from riscv.md's declared "mode" attribute values. gcc hosts constant-fold

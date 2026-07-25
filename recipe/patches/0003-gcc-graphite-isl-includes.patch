@@ -1,0 +1,17 @@
+Include isl/id.h and isl/space.h explicitly in graphite.h
+
+Functions used by the graphite passes are declared in these headers;
+they are pulled in transitively by glibc-era isl builds but not on
+macOS, where the build otherwise fails with undeclared isl functions.
+
+--- a/gcc/graphite.h
++++ b/gcc/graphite.h
+@@ -37,6 +37,8 @@
+ #include <isl/schedule.h>
+ #include <isl/ast_build.h>
+ #include <isl/schedule_node.h>
++#include <isl/id.h>
++#include <isl/space.h>
+ 
+ typedef struct poly_dr *poly_dr_p;
+ 
