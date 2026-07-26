@@ -95,6 +95,19 @@ if [ -f "$PREFIX/lib64/libiberty.a" ]; then
   rmdir "$PREFIX/lib64" 2>/dev/null || true
 fi
 
+# Cross binutils installs the bfd/opcodes dev files under
+# $PREFIX/<host-triple>/riscv32-unknown-elf/{lib,include}; the host triple
+# differs on every platform, so fold them into lib/ and include/ where
+# consumers (the SDK's gen-debug-info build) can find them.
+for hostdir in "$PREFIX"/*-*/riscv32-unknown-elf; do
+  [ -d "$hostdir" ] || continue
+  mkdir -p "$PREFIX/include"
+  mv "$hostdir"/lib/*.a "$PREFIX/lib/" 2>/dev/null || true
+  mv "$hostdir"/include/*.h "$PREFIX/include/" 2>/dev/null || true
+  rm -rf "$hostdir"
+  rmdir "$(dirname "$hostdir")" 2>/dev/null || true
+done
+
 # Strip host binaries before packaging (mirrors Makefile.gap's `strip` target).
 # Target libraries (newlib .a) must keep their symbols — only bin/ and libexec/.
 # STRIP is the conda binutils' host strip from the compiler activation.
