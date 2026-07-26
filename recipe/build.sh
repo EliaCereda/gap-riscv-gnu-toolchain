@@ -105,6 +105,14 @@ sed -i 's|&& \./contrib/download_prerequisites|\&\& true|' Makefile.in
 # setup never handled for that host). Disable it uniformly.
 sed -i 's|--disable-libmudflap|--disable-libcc1 --disable-libmudflap|' Makefile.in
 
+# Ship the host-arch bfd/iberty static libs and headers with the toolchain.
+# The SDK's gen-debug-info (source annotation for GVSOC --trace) is written
+# against exactly this binutils API (2.28) and only ships as a Linux x86-64
+# ELF; with libbfd.a/bfd.h/libiberty.a in the prefix it can be rebuilt
+# natively on every platform. @with_guile@ appears only in the binutils
+# configure stanzas, so the flags reach nothing else.
+sed -i 's|@with_guile@|--enable-install-libbfd --enable-install-libiberty @with_guile@|' Makefile.in
+
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.
 # --without-system-zlib makes GCC build its bundled zlib statically (the
@@ -114,6 +122,13 @@ sed -i 's|--disable-libmudflap|--disable-libcc1 --disable-libmudflap|' Makefile.
   --enable-multilib --without-system-zlib
 make -j"${CPU_COUNT}" all install
 cp riscv.ld "$PREFIX"/riscv32-unknown-elf/lib
+
+# libiberty installs into $(libdir)/$(CC -print-multi-os-directory), which is
+# lib64 with conda's Linux gcc; fold it into lib/ so consumers have one path.
+if [ -f "$PREFIX/lib64/libiberty.a" ]; then
+  mv "$PREFIX/lib64/libiberty.a" "$PREFIX/lib/"
+  rmdir "$PREFIX/lib64" 2>/dev/null || true
+fi
 
 # Strip host binaries before packaging (mirrors Makefile.gap's `strip` target).
 # Target libraries (newlib .a) must keep their symbols — only bin/ and libexec/.
