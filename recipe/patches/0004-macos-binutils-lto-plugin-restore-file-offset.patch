@@ -1,0 +1,19 @@
+--- a/ld/plugin.c
++++ b/ld/plugin.c
+@@ -1057,8 +1057,14 @@
+ 	  called_plugin = curplug;
+ 	  cur_offset = lseek (file->fd, 0, SEEK_CUR);
+ 	  rv = (*curplug->claim_file_handler) (file, claimed);
+-	  if (!*claimed)
+-	    lseek (file->fd, cur_offset, SEEK_SET);
++	  /* Restore the file position even when the plugin claimed the
++	     file.  FILE->FD is a dup of the descriptor behind the bfd's
++	     buffered stdio stream, so both share one file offset, and the
++	     plugin's reads move it.  Darwin's stdio seeks inside its own
++	     buffer without re-syncing the descriptor, so the stream's next
++	     refill reads from wherever the plugin stopped and archive
++	     member headers come back as garbage ("Malformed archive").  */
++	  lseek (file->fd, cur_offset, SEEK_SET);
+ 	  called_plugin = NULL;
+ 	  if (rv != LDPS_OK)
+ 	    set_plugin_error (curplug->name);

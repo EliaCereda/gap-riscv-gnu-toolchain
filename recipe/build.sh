@@ -53,6 +53,14 @@ find . -path '*/zlib/zutil.h' -exec sed -i '/define fdopen(fd,mode) NULL/d' {} +
 patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0002-gcc-add-aarch64-darwin-host-support.patch"
 patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0003-gcc-graphite-isl-includes.patch"
 
+# ld shares one file offset between the LTO plugin's (dup'd) fd and the
+# bfd's buffered stdio stream, and only restores it when the plugin does
+# NOT claim the file. Darwin's stdio seeks inside its buffer without
+# re-syncing the descriptor, so after a claimed archive member the next
+# buffer refill reads from the wrong offset and linking any -flto archive
+# fails with "Malformed archive". Restore the offset unconditionally.
+patch -p1 -N -d riscv-binutils-gdb < "$RECIPE_DIR/patches/0004-macos-binutils-lto-plugin-restore-file-offset.patch"
+
 # The GAP fork's SMALLF mode iterator can expand to V1SF, which is missing
 # from riscv.md's declared "mode" attribute values. gcc hosts constant-fold
 # the (false) TARGET_HARD_FLOAT insn conditions and prune those variants
