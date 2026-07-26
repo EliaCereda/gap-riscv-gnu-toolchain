@@ -42,33 +42,18 @@ find . \( -name '*.y' -o -name '*.yy' -o -name '*.l' -o -name '*.ll' \) -exec to
 # (Xcode's gm4) can never be picked up.
 export M4="$BUILD_PREFIX/bin/m4"
 
-# The zlib bundled with the binutils and gcc trees #defines fdopen to NULL
-# on macOS (a pre-OS-X workaround, removed in later upstream zlib), which
-# breaks the fdopen declaration in modern macOS SDK headers. Drop it.
-find . -path '*/zlib/zutil.h' -exec sed -i '/define fdopen(fd,mode) NULL/d' {} +
-
-# gcc 7 predates Apple Silicon: add the aarch64-darwin host support that
-# upstream gained in gcc 12 (config.host gates it, so this is inert
-# elsewhere), and graphite.h's missing isl includes.
-patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0002-gcc-add-aarch64-darwin-host-support.patch"
-patch -p1 -N -d riscv-gcc < "$RECIPE_DIR/patches/0003-gcc-graphite-isl-includes.patch"
-
-# ld shares one file offset between the LTO plugin's (dup'd) fd and the
-# bfd's buffered stdio stream, and only restores it when the plugin does
-# NOT claim the file. Darwin's stdio seeks inside its buffer without
-# re-syncing the descriptor, so after a claimed archive member the next
-# buffer refill reads from the wrong offset and linking any -flto archive
-# fails with "Malformed archive". Restore the offset unconditionally.
-patch -p1 -N -d riscv-binutils-gdb < "$RECIPE_DIR/patches/0004-macos-binutils-lto-plugin-restore-file-offset.patch"
-
-# The GAP fork's SMALLF mode iterator can expand to V1SF, which is missing
-# from riscv.md's declared "mode" attribute values. gcc hosts constant-fold
-# the (false) TARGET_HARD_FLOAT insn conditions and prune those variants
-# before genattrtab's check; clang does not fold them, and genattrtab then
-# rejects the file. Declare the missing value — the insns stay disabled by
-# their run-time conditions either way.
-sed -i 's/"unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V2HI,V4QI,V2HF,V2OHF"/"unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V1SF,V2HI,V4QI,V2HF,V2OHF"/' \
-  riscv-gcc/gcc/config/riscv/riscv.md
+# All source modifications go through the patch series below, one directory
+# per tree they target; every patch carries its rationale in its own header
+# and the series apply in filename order.
+for p in "$RECIPE_DIR"/patches/toolchain/*.patch; do
+  patch -p1 -N < "$p"
+done
+for p in "$RECIPE_DIR"/patches/riscv-gcc/*.patch; do
+  patch -p1 -N -d riscv-gcc < "$p"
+done
+for p in "$RECIPE_DIR"/patches/riscv-binutils-gdb/*.patch; do
+  patch -p1 -N -d riscv-binutils-gdb < "$p"
+done
 
 # Link the C++ runtime statically on Linux. macOS has no static libc and its
 # libc++ is a stable system library, so there the dynamic default is correct
@@ -92,26 +77,6 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   # promotes to errors under its gnu++17 default.
   export CXXFLAGS="${CXXFLAGS:-} -Wno-error=enum-constexpr-conversion -Wno-register -Wno-dynamic-exception-spec"
 fi
-
-# The generated Makefile re-runs download_prerequisites during the build
-# (when gmp/mpfr/mpc are not host libraries), and GCC 7's script re-extracts
-# the tarballs unconditionally — clobbering the config.sub/zutil.h fixups
-# above. The prerequisites are already in place, so neutralize the re-run.
-sed -i 's|&& \./contrib/download_prerequisites|\&\& true|' Makefile.in
-
-# libcc1 is gdb's compile-anything plugin — useless for an embedded cross
-# toolchain, and its host plugin libraries fail to link on aarch64-darwin
-# (they resolve symbols against the running cc1, which gcc 7's libtool
-# setup never handled for that host). Disable it uniformly.
-sed -i 's|--disable-libmudflap|--disable-libcc1 --disable-libmudflap|' Makefile.in
-
-# Ship the host-arch bfd/iberty static libs and headers with the toolchain.
-# The SDK's gen-debug-info (source annotation for GVSOC --trace) is written
-# against exactly this binutils API (2.28) and only ships as a Linux x86-64
-# ELF; with libbfd.a/bfd.h/libiberty.a in the prefix it can be rebuilt
-# natively on every platform. @with_guile@ appears only in the binutils
-# configure stanzas, so the flags reach nothing else.
-sed -i 's|@with_guile@|--enable-install-libbfd --enable-install-libiberty @with_guile@|' Makefile.in
 
 # Mirrors Makefile.gap's `build` target, but installs into the conda build
 # prefix so rattler-build records relocatable prefix placeholders.

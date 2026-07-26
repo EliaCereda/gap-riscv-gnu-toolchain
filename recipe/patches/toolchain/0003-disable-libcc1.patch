@@ -1,0 +1,45 @@
+Disable libcc1
+
+libcc1 is gdb's compile-and-inject plugin and has no use in an
+embedded cross toolchain. Its host plugin libraries also fail to
+link on aarch64-darwin, where gcc 7's libtool setup never learned
+to resolve plugin symbols against the running compiler.
+
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -164,7 +164,7 @@
+ 		--enable-tls \
+ 		--enable-languages=c \
+ 		--disable-libatomic \
+-		--disable-libmudflap \
++		--disable-libcc1 --disable-libmudflap \
+ 		--disable-libssp \
+ 		--disable-libquadmath \
+ 		--disable-libgomp \
+@@ -193,7 +193,7 @@
+ 		--enable-shared \
+ 		--enable-tls \
+ 		--enable-languages=c,c++,fortran \
+-		--disable-libmudflap \
++		--disable-libcc1 --disable-libmudflap \
+ 		--disable-libssp \
+ 		--disable-libquadmath \
+ 		--disable-nls \
+@@ -235,7 +235,7 @@
+ 		--enable-languages=c,c++ \
+ 		@with_system_zlib@ \
+ 		--with-newlib \
+-		--disable-libmudflap \
++		--disable-libcc1 --disable-libmudflap \
+ 		--disable-libssp \
+ 		--disable-libquadmath \
+ 		--disable-libgomp \
+@@ -278,7 +278,7 @@
+ 		--enable-tls \
+ 		--with-newlib \
+ 		--with-headers=$(INSTALL_DIR)/$(NEWLIB_TUPLE)/include \
+-		--disable-libmudflap \
++		--disable-libcc1 --disable-libmudflap \
+ 		--disable-libssp \
+ 		--disable-libquadmath \
+ 		--disable-libgomp \

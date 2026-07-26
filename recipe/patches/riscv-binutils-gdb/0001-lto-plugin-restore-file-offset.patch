@@ -1,3 +1,12 @@
+Restore the linker's file offset after LTO plugin claims
+
+ld shares one file offset between the LTO plugin's (dup'd) fd and the
+bfd's buffered stdio stream, and only restores it when the plugin does
+NOT claim the file. Darwin's stdio seeks inside its buffer without
+re-syncing the descriptor, so after a claimed archive member the next
+buffer refill reads from the wrong offset and linking any -flto archive
+fails with "Malformed archive". Restore the offset unconditionally.
+
 --- a/ld/plugin.c
 +++ b/ld/plugin.c
 @@ -1057,8 +1057,14 @@

@@ -1,0 +1,38 @@
+Do not re-extract the gcc prerequisites during the build
+
+The generated Makefile re-runs contrib/download_prerequisites in the
+gcc stage whenever gmp/mpfr/mpc are not host libraries, and GCC 7's
+script re-extracts the tarballs unconditionally — clobbering the
+config.sub and zutil.h fixups the build script applies after the
+initial extraction. The prerequisites are already in place before
+configure runs, so neutralize the re-run.
+
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -73,7 +73,7 @@
+ 	cp -a $< $@.tmp
+ 	$(srcdir)/scripts/cp_s $(srcdir)/$(notdir $@) $@.tmp
+ 	cd $@.tmp && patch -p1 < $(srcdir)/patches/$(notdir $@)
+-	if test -f $@.tmp/contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $@.tmp && ./contrib/download_prerequisites; fi
++	if test -f $@.tmp/contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $@.tmp && true; fi
+ 	mv $@.tmp $@
+ 
+ .PHONY: patches $(addprefix $(srcdir)/patches/,$(PACKAGES))
+@@ -148,7 +148,7 @@
+ 
+ stamps/build-gcc-linux-stage1: $(srcdir)/riscv-gcc stamps/build-binutils-linux \
+                                stamps/build-linux-headers
+-	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $< && ./contrib/download_prerequisites; fi
++	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $< && true; fi
+ 	rm -rf $@ $(notdir $@)
+ 	mkdir $(notdir $@)
+ 	cd $(notdir $@) && $</configure \
+@@ -222,7 +222,7 @@
+ 	mkdir -p $(dir $@) && touch $@
+ 
+ stamps/build-gcc-newlib-stage1: $(srcdir)/riscv-gcc stamps/build-binutils-newlib
+-	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $< && ./contrib/download_prerequisites; fi
++	if test -f $</contrib/download_prerequisites && test "@NEED_GCC_EXTERNAL_LIBRARIES@" == "true"; then cd $< && true; fi
+ 	rm -rf $@ $(notdir $@)
+ 	mkdir $(notdir $@)
+ 	cd $(notdir $@) && $</configure \

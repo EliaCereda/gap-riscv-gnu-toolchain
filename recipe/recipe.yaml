@@ -14,8 +14,9 @@ package:
 source:
   git: https://github.com/GreenWaves-Technologies/gap-riscv-gnu-toolchain.git
   rev: ${{ rev }}
-  patches:
-    - ../patches/toolchain/0001-disable-gdb-python.patch
+  # All patches live in recipe/patches/ and are applied by build.sh: several
+  # target files inside the git submodules, which the recipe-level patch
+  # mechanism does not reach reliably.
 
 build:
   number: 3

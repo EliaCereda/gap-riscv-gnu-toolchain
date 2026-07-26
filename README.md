@@ -71,12 +71,15 @@ Release flow: bump `context.version` / `context.rev` in the recipe, tag `v<versi
 
 ## Patches
 
-Patches in `patches/toolchain/` are applied to the upstream checkout via the
-`source.patches` list in [recipe/recipe.yaml](recipe/recipe.yaml). Currently:
-
-- `0001-disable-gdb-python.patch` — GDB 8.0-era Python bindings do not compile
-  against modern Python, so Python scripting support is disabled explicitly
-  (otherwise the build fails on any host with python3 development headers).
+Patches live in [recipe/patches/](recipe/patches/), in one subdirectory per
+tree they target (`toolchain/` for the top-level repo, `riscv-gcc/`,
+`riscv-binutils-gdb/`), and are applied by [recipe/build.sh](recipe/build.sh)
+— several target files inside the git submodules, which the recipe-level
+patch mechanism does not reach reliably.
+Each patch's header describes what it fixes; several (the aarch64-darwin
+host support, graphite includes, the riscv.md V1SF attribute and the ld
+LTO-plugin file-offset fix) are candidates for upstreaming to the
+toolchain fork.
 
 ## Notes on relocatability
 

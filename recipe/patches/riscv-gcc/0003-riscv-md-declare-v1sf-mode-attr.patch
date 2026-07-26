@@ -1,0 +1,20 @@
+Declare V1SF among the mode attribute values
+
+The SMALLF mode iterator can expand insns with mode V1SF, which the
+define_attr "mode" list never included. gcc hosts constant-fold the
+insns' (false) TARGET_HARD_FLOAT conditions and prune the V1SF
+variants before genattrtab validates attribute values; clang does
+not fold the conditions, so genattrtab rejects the file. The insns
+remain disabled by their run-time conditions either way.
+
+--- a/gcc/config/riscv/riscv.md
++++ b/gcc/config/riscv/riscv.md
+@@ -228,7 +228,7 @@
+   (const_string "unknown"))
+ 
+ ;; Main data type used by the insn
+-(define_attr "mode" "unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V2HI,V4QI,V2HF,V2OHF"
++(define_attr "mode" "unknown,none,QI,HI,SI,DI,TI,HF,OHF,SF,DF,TF,V1SF,V2HI,V4QI,V2HF,V2OHF"
+   (const_string "unknown"))
+ 
+ ;; True if the main data type is twice the size of a word.
