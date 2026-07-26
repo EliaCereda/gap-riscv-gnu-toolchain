@@ -19,7 +19,7 @@ source:
   # mechanism does not reach reliably.
 
 build:
-  number: 4
+  number: 5
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
@@ -84,11 +84,14 @@ tests:
       # standalone link needs it supplied by hand.
       - riscv32-unknown-elf-gcc -march=rv32imcxgap9 -mcmodel=medlow tests/hello.c -o hello '-Wl,--defsym,__global_pointer$=0x1000'
       - riscv32-unknown-elf-objdump -d hello | head -n 40
-      # Host-arch bfd/iberty dev files, consumed by the SDK's gen-debug-info
-      # build (--enable-install-libbfd/--enable-install-libiberty)
-      - test -f "$PREFIX/lib/libbfd.a"
+      # Host-arch bfd/iberty dev files for the SDK's gen-debug-info build,
+      # at binutils' native <host-triple>/riscv32-unknown-elf/ location
+      # (plain lib/ and include/ would collide with conda-forge's
+      # binutils_impl). Consumers find the directory with the same glob.
+      - test -f "$PREFIX"/*-*/riscv32-unknown-elf/lib/libbfd.a
+      - test -f "$PREFIX"/*-*/riscv32-unknown-elf/lib/libopcodes.a
+      - test -f "$PREFIX"/*-*/riscv32-unknown-elf/include/bfd.h
       - test -f "$PREFIX/lib/libiberty.a"
-      - test -f "$PREFIX/include/bfd.h"
     files:
       recipe:
         - tests/hello.c

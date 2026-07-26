@@ -88,25 +88,24 @@ fi
 make -j"${CPU_COUNT}" all install
 cp riscv.ld "$PREFIX"/riscv32-unknown-elf/lib
 
+# The bfd/opcodes dev files (consumed by the SDK's gen-debug-info build)
+# stay where cross binutils installs them:
+# $PREFIX/<host-triple>/riscv32-unknown-elf/{lib,include}. That is binutils'
+# own convention for host libraries serving a target toolchain, and it is
+# inherently non-clobbering — folding them into plain lib/ and include/
+# collides with conda-forge's binutils_impl, which ships its own (2.46-API)
+# bfd.h/libbfd.a/libopcodes.a at those paths in every Linux environment.
+# Consumers locate the directory with a glob such as
+#   "$CONDA_PREFIX"/*/riscv32-unknown-elf/lib
+# which also absorbs the platform-to-platform host-triple differences.
+
 # libiberty installs into $(libdir)/$(CC -print-multi-os-directory), which is
-# lib64 with conda's Linux gcc; fold it into lib/ so consumers have one path.
+# lib64 with conda's Linux gcc; fold it into lib/, where conda packages
+# belong (lib/libiberty.a does not collide with binutils_impl).
 if [ -f "$PREFIX/lib64/libiberty.a" ]; then
   mv "$PREFIX/lib64/libiberty.a" "$PREFIX/lib/"
   rmdir "$PREFIX/lib64" 2>/dev/null || true
 fi
-
-# Cross binutils installs the bfd/opcodes dev files under
-# $PREFIX/<host-triple>/riscv32-unknown-elf/{lib,include}; the host triple
-# differs on every platform, so fold them into lib/ and include/ where
-# consumers (the SDK's gen-debug-info build) can find them.
-for hostdir in "$PREFIX"/*-*/riscv32-unknown-elf; do
-  [ -d "$hostdir" ] || continue
-  mkdir -p "$PREFIX/include"
-  mv "$hostdir"/lib/*.a "$PREFIX/lib/" 2>/dev/null || true
-  mv "$hostdir"/include/*.h "$PREFIX/include/" 2>/dev/null || true
-  rm -rf "$hostdir"
-  rmdir "$(dirname "$hostdir")" 2>/dev/null || true
-done
 
 # Strip host binaries before packaging (mirrors Makefile.gap's `strip` target).
 # Target libraries (newlib .a) must keep their symbols — only bin/ and libexec/.
