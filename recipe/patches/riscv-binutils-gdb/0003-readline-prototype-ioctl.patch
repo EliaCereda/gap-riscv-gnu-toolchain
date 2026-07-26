@@ -1,0 +1,48 @@
+readline: include <sys/ioctl.h> so ioctl(2) is always prototyped
+
+readline only includes <sys/ioctl.h> when configure sets
+GWINSZ_IN_SYS_IOCTL, i.e. when termios.h does not already provide
+TIOCGWINSZ. On Darwin termios.h pulls in <sys/ttycom.h>, which defines
+TIOCGWINSZ and struct winsize, so the include is skipped and every
+ioctl() call in terminal.c, rltty.c, input.c and util.c compiles
+against an implicit declaration (allowed by the
+-Wno-error=implicit-function-declaration the build needs for this
+2017-era tree).
+
+That is fatal on arm64 macOS: ioctl(2) is variadic, and the Darwin
+arm64 ABI passes variadic arguments on the stack while an implicitly
+declared (non-variadic) call passes them in registers. libSystem's
+ioctl therefore reads the destination pointer from an uninitialized
+stack slot and the kernel writes the TIOCGWINSZ result (the terminal's
+struct winsize) through it — in practice into a just-freed heap block,
+which macOS malloc detects at the next allocation:
+
+  malloc: Incorrect checksum for freed object 0x...: probably
+  modified after being freed.
+
+and gdb aborts at startup right after the banner (the corrupt value
+decodes exactly to the terminal's winsize). x86-64 passes the first
+few arguments identically for variadic and normal calls, which is why
+the old Intel macOS builds of this same source never crashed; on Linux
+GWINSZ_IN_SYS_IOCTL is set and the include happens anyway.
+
+Include <sys/ioctl.h> unconditionally (except MinGW, which has no such
+header) from rldefs.h, which all of the affected files include.
+
+--- a/readline/rldefs.h
++++ b/readline/rldefs.h
+@@ -30,6 +30,14 @@
+ 
+ #include "rlstdc.h"
+ 
++/* Always pick up the ioctl(2) prototype: on Darwin the TIOCGWINSZ
++   macros come in via termios.h, so the GWINSZ_IN_SYS_IOCTL-guarded
++   includes elsewhere are skipped and ioctl would otherwise be called
++   without a prototype (miscompiled on arm64 Darwin: ioctl is variadic).  */
++#if !defined (__MINGW32__)
++#  include <sys/ioctl.h>
++#endif
++
+ #if defined (STRCOLL_BROKEN)
+ #  undef HAVE_STRCOLL
+ #endif

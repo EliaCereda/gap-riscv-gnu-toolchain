@@ -19,7 +19,7 @@ source:
   # mechanism does not reach reliably.
 
 build:
-  number: 3
+  number: 4
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
