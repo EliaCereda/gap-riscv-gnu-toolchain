@@ -81,6 +81,21 @@ host support, graphite includes, the riscv.md V1SF attribute and the ld
 LTO-plugin file-offset fix) are candidates for upstreaming to the
 toolchain fork.
 
+riscv-gcc 0005-0007 and riscv-binutils-gdb 0004 fix code generation and
+assembly that disagree with GAP9 silicon, as established on a GAP9 EVK
+(gap-llvm-toolchain ROADMAP §5.7):
+
+- `xori.d`/`ori.d`/`andi.d`/`sltiu.d` zero-extend their 5-bit immediate
+  (0..31); GCC and gas treated it as signed, so e.g. an unsigned 64-bit
+  `x < 0xfffffffffffffff0` became `sltiu.d …,-16`, i.e. `x < 16`;
+- `pv.unpack1` puts the even byte in lane 0, and `pv.unpack2` writes the
+  register pair rd:rd+1, not the register in its rs2 field;
+- C conversions of bf16 to integers rounded instead of truncating, and
+  packed conversions wrote the whole fcsr around `vfcvt` (on GAP9 an FP
+  instruction right after a frm write still uses the old frm).
+
+`recipe/tests/gap9-asm-checks.sh` checks them in the package tests.
+
 ## Notes on relocatability
 
 The package ships the toolchain with its build-time installation prefix left

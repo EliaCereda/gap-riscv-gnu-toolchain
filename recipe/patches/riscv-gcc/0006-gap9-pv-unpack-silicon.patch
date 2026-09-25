@@ -1,0 +1,166 @@
+GAP9: pv.unpack lane order and unpack2's register-pair destination
+
+On GAP9 silicon pv.unpack1.lo.h.b.{s,u} gives {lane 0: ext(byte 0), lane 1:
+ext(byte 1)}, and .hi the same for bytes 2 and 3. pv.unpack2.h.b.{s,u}
+writes the register pair rd = unpack1.lo, rd+1 = unpack1.hi, and neither
+reads nor writes the register in its rs2 field.
+
+- unpack1_*: the RTL had the lanes the other way round, so GCC's own
+  simplifications disagreed with the instruction: lane 0 of
+  __builtin_pulp_unpacklo_h_b_s(x) became pv.extract.b of byte 1, and a
+  constant argument folded to the swapped value.
+- unpack2_*: modelled as a second SET into the rs2-field operand. Silicon
+  writes rd+1 instead, which GCC didn't know, so a value it kept there was
+  lost (pv.unpack2 a0,a0,a5 followed by a read of a1). unpack2_h_b_*_pair
+  now sets a DImode register pair (an unspec) and prints zero in the rs2
+  field; the builtin's expander returns the low half. The builtin's second
+  argument has no effect, as before.
+
+--- a/gcc/config/riscv/riscv.md
++++ b/gcc/config/riscv/riscv.md
+@@ -98,6 +98,10 @@
+ 
+   UNSPEC_READSI_NONVOL
+ 
++  ;; GAP9 pv.unpack2 (register pair result)
++  UNSPEC_UNPACK2_S
++  UNSPEC_UNPACK2_U
++
+   ;; Mult short sign/unsigned with optional Norm or Norm + round, in operands treated as plain int (short int in an int)
+   UNSPEC_MULS
+   UNSPEC_MULU
+@@ -5226,8 +5230,8 @@
+ (define_insn "unpack1_lo_h_b_s"
+   [(set	(match_operand:V2HI 0 "register_operand" "=r")
+ 	(vec_concat:V2HI
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 1)]))) 0)
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 0)]))) 0)
++		(subreg:HI (sign_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 0)]))) 0)
++		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 1)]))) 0)
+ 	)
+    )
+   ]
+@@ -5240,8 +5244,8 @@
+ (define_insn "unpack1_lo_h_b_u"
+   [(set	(match_operand:V2HI 0 "register_operand" "=r")
+ 	(vec_concat:V2HI
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 1)]))) 0)
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 0)]))) 0)
++		(subreg:HI (zero_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 0)]))) 0)
++		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 1)]))) 0)
+ 	)
+    )
+   ]
+@@ -5254,8 +5258,8 @@
+ (define_insn "unpack1_hi_h_b_s"
+   [(set	(match_operand:V2HI 0 "register_operand" "=r")
+ 	(vec_concat:V2HI
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 3)]))) 0)
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 2)]))) 0)
++		(subreg:HI (sign_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 2)]))) 0)
++		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 3)]))) 0)
+ 	)
+    )
+   ]
+@@ -5268,8 +5272,8 @@
+ (define_insn "unpack1_hi_h_b_u"
+   [(set	(match_operand:V2HI 0 "register_operand" "=r")
+ 	(vec_concat:V2HI
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 3)]))) 0)
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 2)]))) 0)
++		(subreg:HI (zero_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 2)]))) 0)
++		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 3)]))) 0)
+ 	)
+    )
+   ]
+@@ -5279,48 +5283,56 @@
+  (set_attr "mode" "SI")]
+ )
+ 
+-(define_insn "unpack2_h_b_s"
+-  [
+-   (set	(match_operand:V2HI 0 "register_operand" "=r")
+-	(vec_concat:V2HI
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 1)]))) 0)
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 0)]))) 0)
+-	)
+-   )
+-   (set	(match_operand:V2HI 2 "register_operand" "=r")
+-	(vec_concat:V2HI
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 3)]))) 0)
+-		(subreg:HI (sign_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 2)]))) 0)
+-	)
+-   )
+-  ]
++;; pv.unpack2 writes the register pair rd:rd+1 = (unpack1.lo, unpack1.hi) and
++;; neither reads nor writes the register in its rs2 field (GAP9 silicon).
++(define_insn "unpack2_h_b_s_pair"
++  [(set (match_operand:DI 0 "register_operand" "=r")
++	(unspec:DI [(match_operand:V4QI 1 "register_operand" "r")] UNSPEC_UNPACK2_S))]
+   "((Pulp_Cpu==PULP_GAP9) && !TARGET_MASK_NOVECT)"
+-  "pv.unpack2.h.b.s \t%0,%1,%2\t # Unpack Vect4 to 2 Vect2 with sign extension"
++  "pv.unpack2.h.b.s \t%0,%1,zero\t # Unpack Vect4 to 2 Vect2 with sign extension"
+ [(set_attr "type" "move")
+- (set_attr "mode" "SI")]
++ (set_attr "mode" "DI")]
+ )
+ 
+-(define_insn "unpack2_h_b_u"
+-  [
+-   (set	(match_operand:V2HI 0 "register_operand" "=r")
+-	(vec_concat:V2HI
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_operand:V4QI 1 "register_operand" "r") (parallel [(const_int 1)]))) 0)
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 0)]))) 0)
+-	)
+-   )
+-   (set	(match_operand:V2HI 2 "register_operand" "=r")
+-	(vec_concat:V2HI
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 3)]))) 0)
+-		(subreg:HI (zero_extend:HI (vec_select:QI (match_dup 1) (parallel [(const_int 2)]))) 0)
+-	)
+-   )
+-  ]
++;; __builtin_pulp_unpack_h_b_s: returns the low pair (bytes 0 and 1); the
++;; second argument has no effect.
++(define_expand "unpack2_h_b_s"
++  [(match_operand:V2HI 0 "register_operand" "")
++   (match_operand:V4QI 1 "register_operand" "")
++   (match_operand:V2HI 2 "register_operand" "")]
++  "((Pulp_Cpu==PULP_GAP9) && !TARGET_MASK_NOVECT)"
++{
++  rtx pair = gen_reg_rtx (DImode);
++  emit_insn (gen_unpack2_h_b_s_pair (pair, operands[1]));
++  emit_move_insn (operands[0], gen_lowpart (V2HImode, pair));
++  DONE;
++})
++
++;; pv.unpack2 writes the register pair rd:rd+1 = (unpack1.lo, unpack1.hi) and
++;; neither reads nor writes the register in its rs2 field (GAP9 silicon).
++(define_insn "unpack2_h_b_u_pair"
++  [(set (match_operand:DI 0 "register_operand" "=r")
++	(unspec:DI [(match_operand:V4QI 1 "register_operand" "r")] UNSPEC_UNPACK2_U))]
+   "((Pulp_Cpu==PULP_GAP9) && !TARGET_MASK_NOVECT)"
+-  "pv.unpack2.h.b.u \t%0,%1,%2\t # Unpack Vect4 to 2 Vect2 with zero extension"
++  "pv.unpack2.h.b.u \t%0,%1,zero\t # Unpack Vect4 to 2 Vect2 with zero extension"
+ [(set_attr "type" "move")
+- (set_attr "mode" "SI")]
++ (set_attr "mode" "DI")]
+ )
+ 
++;; __builtin_pulp_unpack_h_b_u: returns the low pair (bytes 0 and 1); the
++;; second argument has no effect.
++(define_expand "unpack2_h_b_u"
++  [(match_operand:V2HI 0 "register_operand" "")
++   (match_operand:V4QI 1 "register_operand" "")
++   (match_operand:V2HI 2 "register_operand" "")]
++  "((Pulp_Cpu==PULP_GAP9) && !TARGET_MASK_NOVECT)"
++{
++  rtx pair = gen_reg_rtx (DImode);
++  emit_insn (gen_unpack2_h_b_u_pair (pair, operands[1]));
++  emit_move_insn (operands[0], gen_lowpart (V2HImode, pair));
++  DONE;
++})
++
+ ;; Vector permutation
+ 
+ (define_insn "vec_perm<VMODEALL2:mode>_internal2_1"

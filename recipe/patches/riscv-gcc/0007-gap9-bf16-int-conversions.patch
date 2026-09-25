@@ -1,0 +1,188 @@
+GAP9: bf16/fp16 <-> integer conversions without fcsr writes
+
+- fix_truncohf/fixuns_truncohf: fcvt.w[u].ah has no rounding-mode field
+  (rm = 101 selects .ah) and rounds by frm, so C conversions of bf16 to
+  integers rounded (1.5 -> 2 under RNE). They now widen to float, which is
+  exact, and use fcvt.w[u].s rtz.
+- The packed fix_trunc/fixuns_trunc expanders, which the vectoriser uses,
+  wrote 1 to the whole fcsr around vfcvt.x[u].{h,ah}: that selects RNE, not
+  RTZ, and sets NX. Moreover, on GAP9 silicon an FP instruction right after
+  a write to frm still rounds by the old frm (measured on the EVK's fabric
+  controller with fsrm, fscsr and csrrwi followed by fadd.s, fcvt.w.ah or
+  vfcvt.x.ah; one instruction in between is enough), so a frm switch
+  around vfcvt is fragile. These optabs are gone; the vectoriser uses the
+  scalar conversions.
+- The packed float/floatuns expanders wrote the same fcsr value around
+  vfcvt.{h,ah}.x[u]. C conversions to floating point round by the current
+  mode, which the instruction does on its own, so they now emit just it.
+- The _internal insns behind the builtins (__builtin_pulp_v2hftov2hi,
+  v2ohftov2hi and their _u forms) are unspecs instead of fix/unsigned_fix:
+  they round by frm, so GCC must neither fold them as truncations nor
+  pick them for C conversions.
+
+--- a/gcc/config/riscv/riscv.md
++++ b/gcc/config/riscv/riscv.md
+@@ -84,6 +84,10 @@
+   UNSPEC_FCSR_READ
+   UNSPEC_FCSR_WRITE
+ 
++  ;; Packed float to int conversions by the dynamic rounding mode (builtins)
++  UNSPEC_VFCVT_X_DYN
++  UNSPEC_VFCVT_XU_DYN
++
+   ;; Nop
+   UNSPEC_NOP
+ 
+@@ -3421,15 +3425,18 @@
+ 
+ 
+ ;;
+-;; Use straight mapping, we assume rounding is whatever comes from fcsr, for f16_alt this is acceptable
++;; fcvt.<GPR:ifmt>[u].ah has no rounding-mode field (rm = 101 is what selects
++;; .ah), so it can't be asked to truncate. C conversions widen to float, which
++;; is exact for bf16, and convert that with rtz.
+ ;;
+ (define_insn "fix_truncohf<GPR:mode>2"
+   [(set (match_operand:GPR 0 "register_operand" "=r")
+         (fix:GPR (match_operand:OHF 1 "register_operand" "xf")))]
+   "TARGET_HARD_FLOAT && Has_F16ALT"
+-   "fcvt.<GPR:ifmt>.ah\t%0,%1"
++  "fcvt.s.ah\t%0,%1\n\tfcvt.<GPR:ifmt>.s\t%0,%0,rtz"
+   [(set_attr "type" "fcvt")
+-   (set_attr "mode" "OHF")]
++   (set_attr "mode" "OHF")
++   (set_attr "length" "8")]
+ )
+ 
+ (define_insn "fix_trunchf<GPR:mode>2"
+@@ -3468,15 +3475,16 @@
+ 
+ 
+ ;;
+-;; Use straight mapping, we assume rounding is whatever comes from fcsr, for f16_alt this is acceptable
++;; Truncating, as fix_truncohf<GPR:mode>2.
+ ;;
+ (define_insn "fixuns_truncohf<GPR:mode>2"
+- [(set (match_operand:GPR 0 "register_operand" "=r")
+-       (unsigned_fix:GPR (match_operand:OHF 1 "register_operand" "xf")))]
+- "TARGET_HARD_FLOAT && Has_F16ALT"
+-  "fcvt.<GPR:ifmt>u.ah\t%0,%1"
++  [(set (match_operand:GPR 0 "register_operand" "=r")
++        (unsigned_fix:GPR (match_operand:OHF 1 "register_operand" "xf")))]
++  "TARGET_HARD_FLOAT && Has_F16ALT"
++  "fcvt.s.ah\t%0,%1\n\tfcvt.<GPR:ifmt>u.s\t%0,%0,rtz"
+   [(set_attr "type" "fcvt")
+-   (set_attr "mode" "OHF")]
++   (set_attr "mode" "OHF")
++   (set_attr "length" "8")]
+ )
+ 
+ (define_insn "fixuns_trunchf<GPR:mode>2"
+@@ -4763,18 +4771,14 @@
+   "vfcvt.<VMODEFLOAT:float_vec_size>.<VMODEFLOAT:ifmt>\t%0,%1\t# f16 Vect to short int vect"
+  )
+ 
++;; C conversion: rounds by frm, as the instruction does. (This used to write
++;; 1 to the whole fcsr around it, selecting RNE and setting NX.)
+ (define_expand "float<VMODEFLOAT:int_vec_type><VMODEFLOAT:vec_type>2"
+ [(set (match_operand:VMODEFLOAT 0 "register_operand" "")
+       (float:VMODEFLOAT (match_operand:<VMODEFLOAT:int_vec_mode> 1 "register_operand" "")))]
+ "TARGET_HARD_FLOAT"
+  {
+-   rtx RegMODE = gen_reg_rtx (SImode);
+-   rtx RegOLD = gen_reg_rtx (SImode);
+-   emit_insn(gen_movsi(RegMODE, gen_rtx_CONST_INT(SImode, 0x0001)));
+-   emit_insn(gen_read_fcsr(RegOLD));
+-   emit_insn(gen_write_fcsr(RegMODE));
+    emit_insn(gen_float<VMODEFLOAT:int_vec_type><VMODEFLOAT:vec_type>2_internal(operands[0], operands[1]));
+-   emit_insn(gen_write_fcsr(RegOLD));
+    DONE;
+  }
+ )
+@@ -4786,68 +4790,46 @@
+   "vfcvt.<VMODEFLOAT:float_vec_size>.<VMODEFLOAT:ifmt>u\t%0,%1\t# f16 Vect to short uint vect"
+  )
+ 
++;; C conversion: rounds by frm, as the instruction does. (This used to write
++;; 1 to the whole fcsr around it, selecting RNE and setting NX.)
+ (define_expand "floatuns<VMODEFLOAT:int_vec_type><VMODEFLOAT:vec_type>2"
+ [(set (match_operand:VMODEFLOAT 0 "register_operand" "")
+       (unsigned_float:VMODEFLOAT (match_operand:<VMODEFLOAT:int_vec_mode> 1 "register_operand" "")))]
+ "TARGET_HARD_FLOAT"
+  {
+-   rtx RegMODE = gen_reg_rtx (SImode);
+-   rtx RegOLD = gen_reg_rtx (SImode);
+-   emit_insn(gen_movsi(RegMODE, gen_rtx_CONST_INT(SImode, 0x0001)));
+-   emit_insn(gen_read_fcsr(RegOLD));
+-   emit_insn(gen_write_fcsr(RegMODE));
+    emit_insn(gen_floatuns<VMODEFLOAT:int_vec_type><VMODEFLOAT:vec_type>2_internal(operands[0], operands[1]));
+-   emit_insn(gen_write_fcsr(RegOLD));
+    DONE;
+  }
+ )
+ 
+ 
++;; vfcvt.x[u].<h|ah> round by frm. The builtins (v2hftov2hi, v2ohftov2hi and
++;; their _u forms) use this pattern and do that, so it is an unspec, not a fix.
+ (define_insn "fix_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2_internal"
+   [(set (match_operand:<VMODEFLOAT:int_vec_mode> 0 "register_operand" "=r")
+-        (fix:<VMODEFLOAT:int_vec_mode> (match_operand:VMODEFLOAT 1 "register_operand" "xf")))]
++        (unspec:<VMODEFLOAT:int_vec_mode> [(match_operand:VMODEFLOAT 1 "register_operand" "xf")] UNSPEC_VFCVT_X_DYN))]
+   "TARGET_HARD_FLOAT"
+-  "vfcvt.<VMODEFLOAT:ifmt>.<VMODEFLOAT:float_vec_size>\t%0,%1\t# f16 Vect to short int vect, trunc"
++  "vfcvt.<VMODEFLOAT:ifmt>.<VMODEFLOAT:float_vec_size>\t%0,%1\t# f16 Vect to short int vect, dynamic rounding"
+  )
+ 
+-(define_expand "fix_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2"
+- [(set (match_operand:<VMODEFLOAT:int_vec_mode> 0 "register_operand" "=r")
+-       (fix:<VMODEFLOAT:int_vec_mode> (match_operand:VMODEFLOAT 1 "register_operand" "xf")))]
+- "TARGET_HARD_FLOAT"
+- {
+-   rtx RegMODE = gen_reg_rtx (SImode);
+-   rtx RegOLD = gen_reg_rtx (SImode);
+-   emit_insn(gen_movsi(RegMODE, gen_rtx_CONST_INT(SImode, 0x0001)));
+-   emit_insn(gen_read_fcsr(RegOLD));
+-   emit_insn(gen_write_fcsr(RegMODE));
+-   emit_insn(gen_fix_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2_internal(operands[0], operands[1]));
+-   emit_insn(gen_write_fcsr(RegOLD));
+-   DONE;
+- }
+-)
++;; No fix_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2: vfcvt.x has no
++;; rounding-mode field, and on GAP9 silicon an FP instruction right after a
++;; write to frm still rounds by the old frm, so a frm switch around it isn't
++;; reliable. The vectoriser uses the exact scalar conversions instead.
+ 
++;; vfcvt.x[u].<h|ah> round by frm. The builtins (v2hftov2hi, v2ohftov2hi and
++;; their _u forms) use this pattern and do that, so it is an unspec, not a unsigned_fix.
+ (define_insn "fixuns_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2_internal"
+   [(set (match_operand:<VMODEFLOAT:int_vec_mode> 0 "register_operand" "=r")
+-        (unsigned_fix:<VMODEFLOAT:int_vec_mode> (match_operand:VMODEFLOAT 1 "register_operand" "xf")))]
++        (unspec:<VMODEFLOAT:int_vec_mode> [(match_operand:VMODEFLOAT 1 "register_operand" "xf")] UNSPEC_VFCVT_XU_DYN))]
+   "TARGET_HARD_FLOAT"
+-  "vfcvt.<VMODEFLOAT:ifmt>u.<VMODEFLOAT:float_vec_size>\t%0,%1\t# f16 Vect to short uint vect, trunc"
++  "vfcvt.<VMODEFLOAT:ifmt>u.<VMODEFLOAT:float_vec_size>\t%0,%1\t# f16 Vect to short uint vect, dynamic rounding"
+  )
+ 
+-(define_expand "fixuns_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2"
+- [(set (match_operand:<VMODEFLOAT:int_vec_mode> 0 "register_operand" "=r")
+-       (unsigned_fix:<VMODEFLOAT:int_vec_mode> (match_operand:VMODEFLOAT 1 "register_operand" "xf")))]
+- "TARGET_HARD_FLOAT"
+- {
+-   rtx RegMODE = gen_reg_rtx (SImode);
+-   rtx RegOLD = gen_reg_rtx (SImode);
+-   emit_insn(gen_movsi(RegMODE, gen_rtx_CONST_INT(SImode, 0x0001)));
+-   emit_insn(gen_read_fcsr(RegOLD));
+-   emit_insn(gen_write_fcsr(RegMODE));
+-   emit_insn(gen_fixuns_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2_internal(operands[0], operands[1]));
+-   emit_insn(gen_write_fcsr(RegOLD));
+-   DONE;
+- }
+-)
++;; No fixuns_trunc<VMODEFLOAT:vec_type><VMODEFLOAT:int_vec_type>2: vfcvt.xu has no
++;; rounding-mode field, and on GAP9 silicon an FP instruction right after a
++;; write to frm still rounds by the old frm, so a frm switch around it isn't
++;; reliable. The vectoriser uses the exact scalar conversions instead.
+ 
+ ;; Helper insn
+ (define_insn "lshrimm<VMODEALL:mode>"

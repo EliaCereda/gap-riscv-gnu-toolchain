@@ -1,0 +1,90 @@
+GAP9: xori.d/ori.d/andi.d/sltiu.d take an unsigned 5-bit immediate
+
+GAP9 silicon zero-extends it (gap-llvm-toolchain ROADMAP §5.7). gas read it
+as signed (bI, -16..15), so 16..31 could only be written as -16..-1, and
+objdump printed them that way. These four now use bi (0..31) for Xgap9 and
+Xgap10 alike, as GCC treats both chips the same; addi.d and slti.d keep bI
+(silicon sign-extends theirs). A bi value out of range now reports
+"immediate out of range, expected 0..31 (unsigned 5-bit)" instead of
+"illegal operands".
+
+--- a/gas/config/tc-riscv.c
++++ b/gas/config/tc-riscv.c
+@@ -1626,6 +1626,7 @@ riscv_ip (char *str, struct riscv_cl_insn *ip, expressionS *imm_expr,
+   int argnum;
+   const struct percent_op_match *p;
+   const char *error = "unrecognized opcode";
++  const char *range_error = NULL;
+ 
+   /* Parse the name of the instruction.  Terminate the string if whitespace
+      is found so that hash_find only sees the name part of the string.  */
+@@ -1648,6 +1649,7 @@ riscv_ip (char *str, struct riscv_cl_insn *ip, expressionS *imm_expr,
+       if (WarnInsn && (insn->pinfo != INSN_MACRO) && (insn->pinfo & INSN_WARN)) as_warn("-mwinsn: Problematic insn %s\n", insn->name);
+       create_insn (ip, insn);
+       argnum = 1;
++      range_error = NULL;
+ 
+       imm_expr->X_op = O_absent;
+       *imm_reloc = BFD_RELOC_UNUSED;
+@@ -2076,7 +2078,7 @@ rvc_lui:
+                    b2: pc rel 5 bits unsigned offset for lp.setupi
+                    b3: 5 bits immediate for scallimm
+                    b5: 5 bits unsigned immediate bits[29..25]
+-                   bi: 5 bits unsigned immediate bits[24..20]
++                   bi: 5 bits unsigned immediate bits[24..20] (GAP9 zero-extends it for xori.d/ori.d/andi.d/sltiu.d)
+                    bI: 5 bits signed immediate bits[24..20]
+                    bs: 6 bits signed immediate for vector instructions
+                    bu: 6 bits unsigned immediate for vector instructions
+@@ -2159,7 +2161,10 @@ rvc_lui:
+                 my_getExpression (imm_expr, s);
+                 check_absolute_expr (ip, imm_expr);
+                 s = expr_end;
+-                if (imm_expr->X_add_number<0 || imm_expr->X_add_number>31) break;
++                if (imm_expr->X_add_number<0 || imm_expr->X_add_number>31) {
++                  range_error = _("immediate out of range, expected 0..31 (unsigned 5-bit)");
++                  break;
++                }
+                 ip->insn_opcode |= ENCODE_I5_1_TYPE_UIMM (imm_expr->X_add_number);
+                 ++args;
+               } else {
+@@ -2271,7 +2276,7 @@ jump:
+ 	  break;
+ 	}
+       s = argsStart;
+-      error = _("illegal operands");
++      error = range_error ? range_error : _("illegal operands");
+     }
+ 
+ out:
+--- a/opcodes/riscv-opc.c
++++ b/opcodes/riscv-opc.c
+@@ -2993,10 +2993,10 @@ const struct riscv_opcode riscv_opcodes[] =
+ 
+ /* OP_IMM32 Group */
+ {"slti.d",   	"Xgap9", "d,s,bI", 	MATCH_SLTI_D,  			MASK_PALU1,  		match_opcode,	0},
+-{"sltiu.d",  	"Xgap9", "d,s,bI", 	MATCH_SLTIU_D, 			MASK_PALU1,  		match_opcode,	0},
+-{"xori.d", 	"Xgap9", "d,s,bI", 	MATCH_XORI_D, 			MASK_PALU1,  		match_opcode,	0},
+-{"ori.d",   	"Xgap9", "d,s,bI", 	MATCH_ORI_D,  			MASK_PALU1,  		match_opcode,	0},
+-{"andi.d",   	"Xgap9", "d,s,bI", 	MATCH_ANDI_D,  			MASK_PALU1,  		match_opcode,	0},
++{"sltiu.d",  	"Xgap9", "d,s,bi", 	MATCH_SLTIU_D, 			MASK_PALU1,  		match_opcode,	0},
++{"xori.d", 	"Xgap9", "d,s,bi", 	MATCH_XORI_D, 			MASK_PALU1,  		match_opcode,	0},
++{"ori.d",   	"Xgap9", "d,s,bi", 	MATCH_ORI_D,  			MASK_PALU1,  		match_opcode,	0},
++{"andi.d",   	"Xgap9", "d,s,bi", 	MATCH_ANDI_D,  			MASK_PALU1,  		match_opcode,	0},
+ 
+ 
+ /* Alias */
+@@ -3784,10 +3784,10 @@ const struct riscv_opcode riscv_opcodes[] =
+ 
+ /* OP_IMM32 Group */
+ {"slti.d",   	"Xgap10", "d,s,bI", 	MATCH_SLTI_D,  			MASK_PALU1,  		match_opcode,	0},
+-{"sltiu.d",  	"Xgap10", "d,s,bI", 	MATCH_SLTIU_D, 			MASK_PALU1,  		match_opcode,	0},
+-{"xori.d", 	"Xgap10", "d,s,bI", 	MATCH_XORI_D, 			MASK_PALU1,  		match_opcode,	0},
+-{"ori.d",   	"Xgap10", "d,s,bI", 	MATCH_ORI_D,  			MASK_PALU1,  		match_opcode,	0},
+-{"andi.d",   	"Xgap10", "d,s,bI", 	MATCH_ANDI_D,  			MASK_PALU1,  		match_opcode,	0},
++{"sltiu.d",  	"Xgap10", "d,s,bi", 	MATCH_SLTIU_D, 			MASK_PALU1,  		match_opcode,	0},
++{"xori.d", 	"Xgap10", "d,s,bi", 	MATCH_XORI_D, 			MASK_PALU1,  		match_opcode,	0},
++{"ori.d",   	"Xgap10", "d,s,bi", 	MATCH_ORI_D,  			MASK_PALU1,  		match_opcode,	0},
++{"andi.d",   	"Xgap10", "d,s,bi", 	MATCH_ANDI_D,  			MASK_PALU1,  		match_opcode,	0},
+ 
+ 
+ /* Alias */

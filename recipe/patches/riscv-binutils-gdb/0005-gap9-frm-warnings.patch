@@ -1,0 +1,180 @@
+GAP9: warn on the frm-write hazard and on directed fdiv/fsqrt
+
+Two GAP9 silicon behaviours that code can trip over without noticing
+(gap-llvm-toolchain ROADMAP §5.7, measured on a GAP9 EVK on the fabric
+controller and cluster cores 0 and 8):
+- The FP instruction right after a write to frm or fcsr still rounds by the
+  old frm; one instruction in between is enough.
+- fdiv/fsqrt (.s/.h/.ah) swap rdn and rup and round rmm toward zero.
+
+gas now warns, on by default when Xgap9 is enabled (-mno-frm-warn turns it
+off):
+- when an instruction that rounds by frm directly follows, in the same
+  section, one that writes frm or fcsr. Writers are csrrw(i), and
+  csrrs(i)/csrrc(i) with a nonzero source, on CSR 2 or 3 (csrw, fsrm, fscsr,
+  fssr, ...). Readers are every bfloat16 (.ah) instruction except the exact
+  widenings fcvt.s.ah and fcvt.s.h (the others have rm = 101, which selects
+  bfloat16, so they can't take a static mode), every packed vf* instruction,
+  and the scalar instructions whose rounding-mode field is dyn, written or
+  defaulted. Labels don't reset
+  it: a branch to the next instruction would meet the same hazard.
+- on fdiv/fsqrt with a static rdn, rup or rmm.
+Nothing changes in the output.
+
+--- a/gas/config/tc-riscv.c
++++ b/gas/config/tc-riscv.c
+@@ -99,6 +99,109 @@ static struct Pulp_Target_Chip Pulp_Chip = {PULP_CHIP_NONE, PULP_NONE, -1, -1, -
+ 
+ static int WarnInsn = 0;
+ 
++/* GAP9 rounding-mode warnings, on by default when Xgap9 is enabled
++   (-mno-frm-warn turns them off):
++   - an FP instruction that rounds by frm, right after a write to frm or fcsr:
++     on GAP9 silicon it still rounds by the old frm;
++   - fdiv/fsqrt with a static rdn, rup or rmm: GAP9's divide/sqrt unit swaps
++     rdn and rup and rounds rmm toward zero.  */
++static int frm_warn = 1;
++
++/* Per section: did the last instruction write frm?  Layout order within a
++   section; labels don't reset it (a branch into the next instruction would
++   be the hazard too).  */
++static struct
++{
++  segT seg;
++  int wrote;
++} frm_state[32];
++
++static int *
++frm_wrote_in (segT seg)
++{
++  unsigned i;
++
++  for (i = 0; i < ARRAY_SIZE (frm_state) && frm_state[i].seg != NULL; i++)
++    if (frm_state[i].seg == seg)
++      return &frm_state[i].wrote;
++  if (i == ARRAY_SIZE (frm_state))
++    i = 0;  /* Table full: reuse a slot (can only lose a warning).  */
++  frm_state[i].seg = seg;
++  frm_state[i].wrote = 0;
++  return &frm_state[i].wrote;
++}
++
++/* Does INSN write frm (CSR 2) or fcsr (CSR 3)?  csrrs/csrrc with x0, and their
++   immediate forms with 0, only read.  */
++static bfd_boolean
++insn_writes_frm (insn_t insn)
++{
++  unsigned funct3 = (insn >> 12) & 7, rs1 = (insn >> 15) & 31, csr = insn >> 20;
++
++  if ((insn & 0x7f) != 0x73 || (csr != 2 && csr != 3))
++    return FALSE;
++  switch (funct3)
++    {
++    case 1: case 5:  /* csrrw, csrrwi (csrw, fsrm, fscsr, fssr) */
++      return TRUE;
++    case 2: case 3: case 6: case 7:
++      return rs1 != 0;
++    default:
++      return FALSE;
++    }
++}
++
++/* Does INSN round by frm on GAP9?  Every bfloat16 (.ah) instruction but the
++   exact widenings fcvt.s.ah and fcvt.s.h (the others have rm = 101, which is
++   what selects bfloat16, so they can't take a static mode), every packed vf*
++   instruction (no rounding-mode field), and the scalar instructions with a
++   rounding-mode field set to dyn.  */
++static bfd_boolean
++insn_reads_frm (const struct riscv_opcode *mo, insn_t insn)
++{
++  const char *name = mo->name;
++  unsigned op = insn & 0x7f, rm = (insn >> 12) & 7, funct5 = insn >> 27;
++
++  if (strncmp (name, "vf", 2) == 0)
++    return TRUE;
++  if (strcmp (name, "fcvt.s.ah") == 0 || strcmp (name, "fcvt.s.h") == 0)
++    return FALSE;
++  if (strstr (name, ".ah") != NULL)
++    return TRUE;
++  if (op == 0x43 || op == 0x47 || op == 0x4b || op == 0x4f)  /* fmadd family */
++    return rm == 7;
++  if (op == 0x53)
++    switch (funct5)
++      {
++      case 0x00: case 0x01: case 0x02: case 0x03:  /* fadd fsub fmul fdiv */
++      case 0x0b:  /* fsqrt */
++      case 0x08:  /* fcvt between FP formats */
++      case 0x18: case 0x1a:  /* fcvt to and from integers */
++	return rm == 7;
++      default:
++	break;
++      }
++  return FALSE;
++}
++
++static void
++riscv_frm_check (const struct riscv_cl_insn *ip)
++{
++  insn_t insn = ip->insn_opcode;
++  const char *name = ip->insn_mo->name;
++  int *wrote = frm_wrote_in (now_seg);
++  unsigned rm = (insn >> 12) & 7;
++
++  if (*wrote && insn_reads_frm (ip->insn_mo, insn))
++    as_warn (_("`%s' right after a write to frm/fcsr: on GAP9 it still rounds "
++	       "by the old frm (put an instruction in between)"), name);
++  if ((insn & 0x7f) == 0x53 && rm >= 2 && rm <= 4
++      && (strncmp (name, "fdiv.", 5) == 0 || strncmp (name, "fsqrt.", 6) == 0))
++    as_warn (_("`%s' with a static rdn, rup or rmm: GAP9's divide/sqrt unit "
++	       "swaps rdn and rup and rounds rmm toward zero"), name);
++  *wrote = insn_writes_frm (insn);
++}
++
+ static void pulp_set_chip(const char *arg);
+ static void pulp_add_chip_info(void);
+ 
+@@ -1084,6 +1187,9 @@ append_insn (struct riscv_cl_insn *ip, expressionS *address_expr,
+ {
+   dwarf2_emit_insn (0);
+ 
++  if (frm_warn && riscv_subset_supports ("Xgap9"))
++    riscv_frm_check (ip);
++
+   if (reloc_type != BFD_RELOC_UNUSED)
+     {
+       reloc_howto_type *howto;
+@@ -2339,6 +2445,7 @@ enum options
+     OPTION_CHIP,
+     OPTION_WARNINSN,
+     OPTION_ENCRYPT,
++    OPTION_NO_FRM_WARN,
+   OPTION_END_OF_ENUM
+ };
+ 
+@@ -2360,6 +2467,7 @@ struct option md_longopts[] =
+   {"mcpu", required_argument, NULL, OPTION_CPU},
+   {"mchip", required_argument, NULL, OPTION_CHIP},
+   {"mwinsn", no_argument, NULL, OPTION_WARNINSN},
++  {"mno-frm-warn", no_argument, NULL, OPTION_NO_FRM_WARN},
+   {"mencrypt-info", required_argument, NULL, OPTION_ENCRYPT},
+ 
+   {NULL, no_argument, NULL, 0}
+@@ -2453,6 +2561,9 @@ md_parse_option (int c, const char *arg)
+     case OPTION_WARNINSN:
+       WarnInsn = 1;
+       break;
++    case OPTION_NO_FRM_WARN:
++      frm_warn = 0;
++      break;
+     case OPTION_ENCRYPT:
+       riscv_set_encrypt (optarg);
+       break;
+@@ -3201,6 +3312,8 @@ RISC-V options:\n\
+   -mFC=Value          if Value=0 assume there is no fabric controler, if Value!=0 assume there is one FC\n\
+   -mchip=Name         define targeted chip as Name\n\
+   -mwinsn             turn on warning on marked asm instructions\n\
++  -mno-frm-warn       no GAP9 rounding-mode warnings (frm-write hazard,\n\
++                      directed fdiv/fsqrt)\n\
+   -mencrypt-info=Name pass module encryption in file Name\n\
+ "));
+ }
