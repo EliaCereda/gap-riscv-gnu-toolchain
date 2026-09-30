@@ -81,7 +81,7 @@ host support, graphite includes, the riscv.md V1SF attribute and the ld
 LTO-plugin file-offset fix) are candidates for upstreaming to the
 toolchain fork.
 
-riscv-gcc 0005-0007 and riscv-binutils-gdb 0004 fix code generation and
+riscv-gcc 0005-0008 and riscv-binutils-gdb 0004 fix code generation and
 assembly that disagree with GAP9 silicon, as established on a GAP9 EVK
 (gap-llvm-toolchain ROADMAP §5.7):
 
@@ -92,7 +92,11 @@ assembly that disagree with GAP9 silicon, as established on a GAP9 EVK
   register pair rd:rd+1, not the register in its rs2 field;
 - C conversions of bf16 to integers rounded instead of truncating, and
   packed conversions wrote the whole fcsr around `vfcvt` (on GAP9 an FP
-  instruction right after a frm write still uses the old frm).
+  instruction right after a frm write still uses the old frm);
+- a hardware loop whose body is one instruction runs once, whatever its
+  count; GCC pads such a body with a nop, but counted
+  `__builtin_pulp_OffsetedWritePtr`'s code-less barrier as an instruction,
+  so a loop of one such store (the SDK's `eu_sem_inc`) stored once.
 
 `recipe/tests/gap9-asm-checks.sh` checks them in the package tests.
 

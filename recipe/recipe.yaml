@@ -19,7 +19,7 @@ source:
   # mechanism does not reach reliably.
 
 build:
-  number: 7
+  number: 8
   prefix_detection:
     # Do NOT rewrite the build prefix inside the ELF binaries: GCC 7's driver
     # constant-folds strlen() of the compiled-in prefix at -O2, so shortening
@@ -92,8 +92,9 @@ tests:
       - test -f "$PREFIX"/*-*/riscv32-unknown-elf/lib/libopcodes.a
       - test -f "$PREFIX"/*-*/riscv32-unknown-elf/include/bfd.h
       - test -f "$PREFIX/lib/libiberty.a"
-      # GAP9 silicon fixes (riscv-gcc 0005-0007, riscv-binutils-gdb 0004-0005):
-      # .d immediates, pv.unpack, bf16 <-> integer conversions, rounding-mode warnings
+      # GAP9 silicon fixes (riscv-gcc 0005-0008, riscv-binutils-gdb 0004-0005):
+      # .d immediates, pv.unpack, bf16 <-> integer conversions, rounding-mode
+      # warnings, one-instruction hardware-loop bodies
       - cd tests && bash gap9-asm-checks.sh
     files:
       recipe:
@@ -103,6 +104,7 @@ tests:
         - tests/gap9-unpack.c
         - tests/gap9-bf16-trunc.c
         - tests/gap9-frm-warn.s
+        - tests/gap9-hwloop.c
 
 about:
   summary: GAP RISC-V GNU toolchain (riscv32-unknown-elf GCC, binutils, newlib) for GreenWaves GAP processors

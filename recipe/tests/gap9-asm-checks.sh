@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks for the GAP9 silicon fixes (patches riscv-gcc 0005-0007 and
+# Checks for the GAP9 silicon fixes (patches riscv-gcc 0005-0008 and
 # riscv-binutils-gdb 0004-0005): compile the gap9-*.c tests to assembly and grep it,
 # and assemble .d immediates at both ends of their ranges. Run from the
 # directory holding the tests, with the package's riscv32-unknown-elf-* on PATH.
@@ -15,6 +15,13 @@ body() { awk -v f="$2" '$0 == f":" {p=1; next} p && /^\t\.size/ {exit} p' "$1"; 
 has() { body "$1" "$2" | grep -Eq "$3" || bad "$2: no match for /$3/"; }
 # Function $2's body must not match $3.
 hasnt() { if body "$1" "$2" | grep -Eq "$3"; then bad "$2: unexpected /$3/"; fi; }
+# Instructions in each hardware-loop body of the assembly on stdin: from the
+# lp.setup up to the instruction at its end label, labels and directives left out.
+hwbodies() {
+  awk '/^\tlp\.setup/ { l = $0; sub(/.*\(/, "", l); sub(/\).*/, "", l); n = 0; in_loop = 1; at_end = 0; next }
+       in_loop && $0 == l ":" { at_end = 1; next }
+       in_loop && /^\t[a-z]/ { n++; if (at_end) { print n; in_loop = 0 } }'
+}
 
 # (a) .d immediates: xori/ori/andi/sltiu.d take 0..31, addi.d/slti.d -16..15.
 riscv32-unknown-elf-gcc "${flags[@]}" -O2 -S -o d-imm.s gap9-d-imm.c
@@ -86,5 +93,24 @@ has bf16-trunc.s to_short_array 'fcvt\.w\.s[[:space:]]+[a-z0-9]+,[a-z0-9]+,rtz'
 hasnt bf16-trunc.s to_short_array 'vfcvt'
 has bf16-trunc.s from_short_array 'vfcvt\.ah\.x'
 has bf16-trunc.s builtin_round 'vfcvt\.x\.ah'
+
+# (d) hardware loops: GAP9 runs a one-instruction body once, so GCC pads it
+# with a nop. A loop of one OffsetedWritePtr store or event_unit_read_fenced
+# load (a code-less barrier and the access) gets the nop too (riscv-gcc 0008).
+# -Os makes no hardware loop of the run-time counts (incn, sum).
+for o in O2 O3 Os; do
+  riscv32-unknown-elf-gcc "${flags[@]}" -$o -S -o hwloop-$o.s gap9-hwloop.c
+  for f in inc100 incn poll100 sum; do
+    n=$(body hwloop-$o.s $f | hwbodies | tr '\n' ' ')
+    if [ -z "$n" ] && { [ "$o" != Os ] || [ "$f" = inc100 ] || [ "$f" = poll100 ]; }; then
+      bad "-$o $f: no hardware loop"
+    fi
+    case " $n" in
+      *" 0 "* | *" 1 "*) bad "-$o $f: a hardware-loop body of one instruction (bodies: $n)" ;;
+    esac
+  done
+done
+has hwloop-O2.s inc100 '^[[:space:]]nop$'
+hasnt hwloop-O2.s sum '^[[:space:]]nop$'
 
 exit "$fail"

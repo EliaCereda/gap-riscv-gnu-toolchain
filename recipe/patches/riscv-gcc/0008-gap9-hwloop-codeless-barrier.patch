@@ -1,0 +1,63 @@
+GAP9: a hardware loop of one OffsetedWritePtr store gets its nop pad
+
+GAP9 silicon runs a hardware loop whose body is one instruction once,
+whatever its count (gap-llvm-toolchain ROADMAP §5.7), so the hardware-loop
+pass pads a body shorter than two instructions (-mhwloopmin, default 2)
+with a nop. It counts the body by the insns' length attribute
+(length_for_loop).
+
+__builtin_pulp_OffsetedWritePtr (the SDK's GAP_WRITE_PTR, as in
+eu_sem_inc) and __builtin_pulp_event_unit_read_fenced (evt_read32) expand
+to sync.md's *memory_barrier followed by the store or load. The barrier
+prints nothing but has the default length, 4, so a loop of one such store
+counted as two instructions and got no pad:
+
+  void f(unsigned b) { for (int i = 0; i < 100; i++)
+      __builtin_pulp_OffsetedWritePtr((int *)1, (int *)b, 1028); }
+
+became `lp.setupi x1,100,(.L5)` over the lone p.sw at -O2, -O3 and -Os,
+which stores once. length_for_loop now leaves the barrier out, so that loop
+counts one instruction and gets the nop.
+
+Only the hardware-loop count changes. A length of 0 on the barrier itself
+would do it too, but the length also sizes blocks for basic-block reordering:
+the SDK's kernels, which end with gap_waitbarrier's barrier and event-unit
+load, then got their epilogue copied instead of jumped to (119 objects of the
+whole-SDK objdump). A body of one of these stores or loads and anything else
+was already two or more instructions; a longer one counts one instruction
+less per barrier, which only matters for the lp.setupi (up to 15
+instructions) or lp.setup choice.
+
+--- a/gcc/config/riscv/riscv.c
++++ b/gcc/config/riscv/riscv.c
+@@ -6279,11 +6279,29 @@ void riscv_hardware_loop (void)
+   cfun->machine->has_hardware_loops++;
+ }
+ 
++/* True if INSN is sync.md's *memory_barrier, which prints nothing: the
++   barrier that __builtin_pulp_OffsetedWritePtr and
++   __builtin_pulp_event_unit_read_fenced put before their access.  */
++
++static bool riscv_codeless_barrier_p (rtx_insn *insn)
++{
++  rtx pat = PATTERN (insn);
++
++  return (GET_CODE (pat) == SET
++	  && GET_CODE (SET_SRC (pat)) == UNSPEC
++	  && XINT (SET_SRC (pat), 1) == UNSPEC_MEMORY_BARRIER);
++}
++
++/* INSN's instructions in a hardware loop's body.  A code-less barrier has
++   none: a loop of one OffsetedWritePtr store is one instruction, which GAP9
++   runs once, and needs the pad.  */
++
+ static int length_for_loop (rtx_insn *insn)
+ {
+   int length = 0;
+ 
+-  if (NONDEBUG_INSN_P (insn)) length += (get_attr_length (insn))/4;
++  if (NONDEBUG_INSN_P (insn) && !riscv_codeless_barrier_p (insn))
++    length += (get_attr_length (insn))/4;
+   return length;
+ }
+ 
